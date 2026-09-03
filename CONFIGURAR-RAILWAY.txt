@@ -1,0 +1,104 @@
+TUBE AUTOPILOT - CONFIGURAR RAILWAY (HOSPEDAGEM 24/7)
+======================================================
+
+Este app foi preparado para rodar no Railway (Node.js + Express, sem build).
+O Railway puxa o codigo do GitHub e executa `npm start` automaticamente.
+
+========================================
+PASSO 1 - GARANTIR QUE O CODIGO ESTA NO GIT
+========================================
+- O codigo ja foi commitado e enviado para o seu GitHub
+  (frestinhoaposta-cyber/tube-autopilot, branch main).
+- Confirme que esta la: https://github.com/frestinhoaposta-cyber/tube-autopilot
+
+========================================
+PASSO 2 - CRIAR O PROJETO NO RAILWAY
+========================================
+1) Entre em https://railway.com e faca login.
+2) Clique em + New Project.
+3) Escolha "Deploy from GitHub repo".
+4) Selecione o repositório tube-autopilot.
+5) O Railway detecta Node e roda `npm start` sozinho.
+6) Apos subir, copie a URL do seu app
+   (ex: https://tube-autopilot-production.up.railway.app).
+
+========================================
+PASSO 3 - VARIÁVEIS DE AMBIENTE (OBRIGATORIO)
+========================================
+Sem elas o app sobe, mas nao conecta no YouTube/TikTok.
+
+No painel do servico, aba "Variables", adicione com os MESMOS valores
+do seu .env local, POREM trocando as URLs de redirecionamento:
+
+    SESSION_SECRET=<a mesma do seu .env>
+    TOKEN_ENCRYPTION_KEY=<a mesma do seu .env>
+
+    YOUTUBE_CLIENT_ID=<do seu .env>
+    YOUTUBE_CLIENT_SECRET=<do seu .env>
+    YOUTUBE_REDIRECT_URI=https://SEUAPP.up.railway.app/api/auth/google/callback
+
+    YOUTUBE_CLIENT_ID_2=<do seu .env, se tiver>
+    YOUTUBE_CLIENT_SECRET_2=<do seu .env, se tiver>
+    YOUTUBE_REDIRECT_URI_2=https://SEUAPP.up.railway.app/api/auth/google/callback
+
+    TIKTOK_CLIENT_KEY=<do seu .env, se tiver>
+    TIKTOK_CLIENT_SECRET=<do seu .env, se tiver>
+    TIKTOK_REDIRECT_URI=https://SEUAPP.up.railway.app/api/tiktok/auth/callback
+
+    SUPABASE_URL=<se usar multi-usuario>
+    SUPABASE_PUBLISHABLE_KEY=<se usar>
+    SUPABASE_SECRET_KEY=<se usar>
+    SUPABASE_JWKS_URL=<se usar>
+
+OBS: a variavel PORT nao precisa ser definida - o Railway injeta sozinho.
+
+========================================
+PASSO 4 - AUTORIZAR O GOOGLE (REDIRECT URI)
+========================================
+No Google Cloud Console, o app OAuth precisa aceitar a nova URL.
+Em "Credenciais" > seu cliente OAuth > "URIs de redirecionamento autorizados",
+ADICIONE:
+
+    https://SEUAPP.up.railway.app/api/auth/google/callback
+
+(nao remova a de localhost, para continuar testando no PC)
+
+========================================
+PASSO 5 - REDIRECT DO TIKTOK (SE USAR)
+========================================
+No TikTok for Developers, em "Redirect URI" do app, adicione:
+
+    https://SEUAPP.up.railway.app/api/tiktok/auth/callback
+
+========================================
+PASSO 6 - PERSISTENCIA DE DADOS (IMPORTANTE!)
+========================================
+Este app guarda videos, inventario e contas em data/.
+O Railway apaga data/ a cada novo deploy/atualizacao.
+Para NAO perder os videos e a configuracao:
+
+1) No painel do servico, va em "Volumes".
+2) Adicione um Volume montado em:  /app/data
+   (algumas versoes do Railway usam /app ou /root - ajuste se precisar).
+3) Com o volume, videos e contas ficam salvos entre deploys.
+
+Depois de montar o volume, voce precisa RE-CONECTAR as contas
+(SHADOW CLIENT e Blox Scripts) dentro do painel do Railway, e
+re-definir o comentario automatico por canal, pois os dados locais
+do seu PC nao foram enviados ao GitHub (por seguranca).
+
+========================================
+PASSO 7 - VERIFICAR
+========================================
+- Abra a URL do seu app.
+- Verifique em /api/health se googleConfigured = true.
+- Conecte as contas YouTube (Shadow Client + Blox Scripts).
+- Defina o comentario automatico por canal.
+- Agende/aguarde a publicacao; os comentarios sairao sozinhos.
+
+========================================
+LIMITE DE ARMAZENAMENTO
+========================================
+O Railway tem limites de disco (cerca de 0,5 GB no trial e mais no Hobby).
+Se seus videos brainrot forem grandes, o volume pode encher. Monitore
+o disco em "Metrics" e apague videos ja postados se necessario.
