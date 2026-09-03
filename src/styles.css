@@ -22,7 +22,7 @@
 .tiktok-hero em{color:#7af7ef}.tiktok-insight{background:linear-gradient(150deg,rgba(37,244,238,.12),rgba(254,44,85,.08)),#101722;border-color:#263a40}.tiktok-add-row{grid-template-columns:1fr 1.5fr}.tt-caption{width:min(520px,100%);min-height:68px;resize:vertical}.tt-options{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.tt-row-meta{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.tt-status{font-size:9px;padding:4px 7px;border-radius:99px;border:1px solid #293344;color:#91a0b5}.tt-status.SUBMITTED,.tt-status.PUBLISHED{color:#5ee49a;border-color:#245a40;background:#102a20}.tt-status.ERROR{color:#ff7888;border-color:#67303a;background:#29141a}.tt-status.SCHEDULED{color:#79a9ff;border-color:#304866;background:#111e31}.tt-video-row{display:grid;grid-template-columns:auto 90px minmax(0,1fr) auto;gap:12px;align-items:center}.tt-video-row .thumb{height:64px}.tt-video-actions{display:flex;gap:7px;align-items:center;flex-wrap:wrap;justify-content:flex-end}.tt-edit{display:grid;gap:7px}.tt-edit input,.tt-edit textarea,.tt-edit select{font-size:11px}.platform-card[data-platform="tiktok"]:hover{border-color:#2a6c6b;background:linear-gradient(160deg,#102024,#12131d)}
 @media(max-width:900px){.tt-video-row{grid-template-columns:auto 70px 1fr}.tt-video-actions{grid-column:2/-1;justify-content:flex-start}.tiktok-add-row{grid-template-columns:1fr}}
 
-/* Gate de autenticação */
+/* Gate de autenticaÃ§Ã£o */
 body.logged-out .app-shell,body.logged-out #platformGate{display:none}
 body.logged-out .toast{visibility:hidden}
 .login-gate{position:fixed;inset:0;z-index:1100;display:grid;place-items:center;overflow:auto;padding:32px 20px;background:radial-gradient(circle at 18% 8%,rgba(255,59,59,.14),transparent 28%),radial-gradient(circle at 82% 92%,rgba(112,82,255,.12),transparent 30%),#080b12}
@@ -46,230 +46,198 @@ body.logged-out .toast{visibility:hidden}
 /* --- Zona de arrastar e soltar (Biblioteca) --- */
 .stock-file-picker{display:grid;place-items:center;gap:3px;text-align:center;min-height:96px;transition:border-color .15s,background .15s}.stock-file-picker strong{font-size:13px}.stock-file-picker span{font-size:11px;color:var(--muted)}.stock-file-picker:hover{border-color:#56637a}.stock-file-picker.drag-over,.upload-box.drag-over{border-color:var(--accent);background:#1e2533}.upload-box.drag-over .upload-icon{transform:translateY(2px)}
 
-/* --- Comentário automático por canal --- */
+/* --- ComentÃ¡rio automÃ¡tico por canal --- */
 .comment-channels{display:grid;gap:12px;margin:14px 0}.comment-channel-row{display:grid;gap:8px;padding:12px;border:1px solid #293249;border-radius:11px;background:#0b1017}.comment-channel-row label.check{display:flex;align-items:center;gap:9px;font-weight:700}.comment-channel-row .cc-text{width:100%;box-sizing:border-box;background:#0b1017;border:1px solid #28303e;border-radius:9px;padding:10px;color:#fff;resize:vertical}
 
-
 /* =========================================================
-   OVERRIDE VISUAL PREMIUM — Tube AutoPilot
-   Adicionado para deixar o site mais bonito e animado.
-   Preserva TODAS as classes/funcionalidades existentes.
+   TEMA PROFISSIONAL — Tube AutoPilot (aprimoramento visual)
+   Paleta coesa, hierarquia clara, animações contidas.
+   Preserva TODAS as classes e funcionalidades existentes.
    ========================================================= */
-@keyframes aurora{
-  0%{background-position:0% 50%}
-  50%{background-position:100% 50%}
-  100%{background-position:0% 50%}
+
+/* ---- Paleta e tokens refinados ---- */
+:root{
+  --brand:#ff3b3b;
+  --brand-2:#b06bff;
+  --surface:#0d1320;
+  --surface-2:#121a2b;
+  --surface-3:#1a2438;
+  --border:#1f2a3d;
+  --text-soft:#aab6c9;
+  --text-dim:#7c8aa0;
+  --glow:0 18px 50px rgba(0,0,0,.35);
 }
-@keyframes fadeInUp{
-  from{opacity:0;transform:translateY(16px)}
+
+/* ---- Animations (contidas e elegantes) ---- */
+@keyframes fadeUp{
+  from{opacity:0;transform:translateY(12px)}
   to{opacity:1;transform:translateY(0)}
-}
-@keyframes fadeIn{
-  from{opacity:0}
-  to{opacity:1}
 }
 @keyframes floaty{
   0%,100%{transform:translateY(0)}
-  50%{transform:translateY(-6px)}
+  50%{transform:translateY(-7px)}
 }
-@keyframes pulseGlow{
-  0%,100%{box-shadow:0 0 0 0 rgba(255,59,59,.35)}
-  50%{box-shadow:0 0 0 9px rgba(255,59,59,0)}
+@keyframes pulseDot{
+  0%{box-shadow:0 0 0 0 rgba(53,208,127,.4)}
+  70%{box-shadow:0 0 0 8px rgba(53,208,127,0)}
+  100%{box-shadow:0 0 0 0 rgba(53,208,127,0)}
 }
-@keyframes shine{
-  0%{transform:translateX(-120%)}
-  100%{transform:translateX(220%)}
+@keyframes shimmer{
+  0%{background-position:-200% 0}
+  100%{background-position:200% 0}
 }
-@keyframes spinSlow{
-  to{transform:rotate(360deg)}
+@keyframes glowPulse{
+  0%,100%{box-shadow:0 6px 22px rgba(255,59,59,.25)}
+  50%{box-shadow:0 6px 30px rgba(255,59,59,.5)}
 }
 
-/* Fundo corporal premium com degradê animado suave */
+/* ---- Layout: fundo limpo, elegante, sem manchas ---- */
 body{
   background:
-    radial-gradient(circle at 85% -5%,rgba(255,59,59,.14),transparent 34%),
-    radial-gradient(circle at 10% 105%,rgba(112,82,255,.16),transparent 36%),
-    linear-gradient(-45deg,#080b12,#0b0f1a,#0d1018,#090c14);
-  background-size:200% 200%;
-  animation:aurora 18s ease infinite;
+    radial-gradient(1100px 500px at 85% -10%, rgba(176,107,255,.12), transparent 60%),
+    radial-gradient(1000px 500px at 0% 110%, rgba(255,59,59,.10), transparent 55%),
+    #0a0f1a;
 }
 
-/* ---- Entrada suave do conteudo principal ---- */
-.main>section.view{animation:fadeInUp .45s ease both}
-.view{animation:fadeIn .4s ease both}
-.stats-grid>article,.panel,.insight-card,.section-title,.hero,.stock-stats article,
-.platform-card,.login-card,.channel-account-card,.video-item,body.logged-in *[data-view]{
-  animation:fadeInUp .38s ease both;
-}
-.main>section.view:nth-of-type(1) .panel,.main>section.view:nth-of-type(1) .stats-grid>article{animation-delay:.05s}
-.main>section.view:nth-of-type(2) .panel{animation-delay:.1s}
-.main>section.view:nth-of-type(3) .panel{animation-delay:.16s}
-
-/* ---- Sidebar premium ---- */
+/* ---- Sidebar: superfícies e hierarquia ---- */
 .sidebar{
-  background:linear-gradient(180deg,#0c101a, #0a0d16);
-  box-shadow:0 0 45px rgba(0,0,0,.45);
+  background:linear-gradient(180deg,#0c1322,#0a0f1a);
+  border-right:1px solid var(--border);
 }
-.brand,.platform-switch,.sidebar .plan-card{animation:fadeInUp .5s ease both}
+.brand{letter-spacing:-.02em}
 .brand-mark,.platform-gate-logo{
-  background:linear-gradient(135deg,#ff3b3b,#a70f2e,#7a1bff);
-  animation:pulseGlow 3.2s ease infinite;
-  position:relative;overflow:hidden;
+  background:linear-gradient(135deg,var(--brand),#a70f2e);
+  box-shadow:0 8px 24px rgba(255,59,59,.3);
 }
-.brand-mark::after,.platform-gate-logo::after{
-  content:"";position:absolute;top:0;left:0;width:60%;height:100%;
-  background:linear-gradient(90deg,transparent,rgba(255,255,255,.35),transparent);
-  animation:shine 3.4s ease infinite;
+.nav-item{
+  transition:background .18s ease,color .18s ease,transform .18s ease;
 }
-.nav-item{transition:transform .18s ease,background .18s ease,color .18s ease,box-shadow .18s ease}
-.nav-item:hover{transform:translateX(4px);background:linear-gradient(90deg,rgba(255,59,59,.12),transparent)}
+.nav-item:hover{background:rgba(255,59,59,.08);color:#fff}
 .nav-item.active{
-  background:linear-gradient(90deg,rgba(255,59,59,.18),rgba(255,59,59,.04));
-  box-shadow:inset 3px 0 0 var(--accent),0 6px 22px rgba(255,59,59,.12);
+  background:linear-gradient(90deg,rgba(255,59,59,.16),rgba(255,59,59,.02));
+  color:#fff;
+  box-shadow:inset 3px 0 0 var(--brand);
 }
+.plan-card{border-radius:14px;border-color:var(--border);box-shadow:var(--glow)}
 
-/* ---- Topbar ---- */
+/* ---- Topbar: vidro suave --- */
 .topbar{
-  background:linear-gradient(180deg,rgba(12,16,26,.9),rgba(10,13,22,.55));
-  backdrop-filter:blur(14px);
-  -webkit-backdrop-filter:blur(14px);
-  border-bottom:1px solid rgba(34,42,56,.6);
+  background:linear-gradient(180deg,rgba(13,19,32,.85),rgba(10,15,26,.55));
+  backdrop-filter:blur(16px);
+  -webkit-backdrop-filter:blur(16px);
+  border-bottom:1px solid var(--border);
 }
 
 /* ---- Hero ---- */
 .hero{
-  background:radial-gradient(circle at 80% 0%,rgba(255,59,59,.16),transparent 40%),
-             radial-gradient(circle at 10% 100%,rgba(112,82,255,.14),transparent 42%),
-             linear-gradient(150deg,#131a28,#0d1119);
-  border:1px solid rgba(255,255,255,.06);
-  border-radius:22px;
-  padding:30px 34px;
-  box-shadow:0 24px 70px rgba(0,0,0,.3);
+  background:linear-gradient(140deg,#131c2e,#0d1422 60%,#101626);
+  border:1px solid var(--border);
+  border-radius:20px;
+  box-shadow:var(--glow);
   position:relative;overflow:hidden;
 }
 .hero::before{
-  content:"";position:absolute;top:-40%;right:-10%;width:320px;height:320px;
-  border-radius:50%;background:radial-gradient(circle,rgba(255,59,59,.2),transparent 65%);
-  filter:blur(30px);animation:floaty 7s ease-in-out infinite;
+  content:"";position:absolute;top:-50%;right:-6%;width:380px;height:380px;
+  border-radius:50%;background:radial-gradient(circle,rgba(255,59,59,.16),transparent 62%);
+  filter:blur(34px);
 }
-.hero h1{letter-spacing:-.05em}
-.hero em{background:linear-gradient(90deg,#ff5c6d,#ff8a5c,#b06bff);-webkit-background-clip:text;background-clip:text;color:transparent}
+.hero em{
+  background:linear-gradient(90deg,#ff5c6d,#ff8a5c,#b06bff);
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+}
+.hero .primary{position:relative;z-index:2}
 
-/* ---- Stats premium ---- */
+/* ---- Stats: cards limpos com destaque no número ---- */
 .stats-grid>article,.stock-stats article{
-  background:linear-gradient(160deg,#161e2e,#0f1420);
-  border:1px solid rgba(255,255,255,.07);
-  border-radius:16px;
-  position:relative;overflow:hidden;
-  transition:transform .2s ease,border-color .2s ease,box-shadow .2s ease;
+  background:linear-gradient(160deg,#141d2e,#0f1524);
+  border:1px solid var(--border);
+  border-radius:14px;
+  transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease;
 }
-.stats-grid>article::after,.stock-stats article::after{
-  content:"";position:absolute;left:0;top:0;height:100%;width:4px;
-  background:linear-gradient(180deg,#ff3b3b,#b06bff);
-  opacity:.75;
-}
+.stats-grid>article::after,.stock-stats article::after{display:none}
 .stats-grid>article:hover,.stock-stats article:hover{
-  transform:translateY(-4px);
-  border-color:rgba(255,92,109,.5);
-  box-shadow:0 16px 40px rgba(0,0,0,.32);
+  transform:translateY(-3px);
+  border-color:rgba(255,92,109,.45);
+  box-shadow:0 14px 38px rgba(0,0,0,.3);
 }
-.stats-grid>article strong{font-size:30px;background:linear-gradient(90deg,#fff,#c9d2ff);-webkit-background-clip:text;background-clip:text;color:transparent}
+.stats-grid>article strong{
+  font-size:28px;letter-spacing:-.02em;
+  background:linear-gradient(90deg,#fff,#cdd6ff);
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+}
+.stats-grid>article span{color:var(--text-soft);font-weight:600}
+.stats-grid>article small{color:var(--text-dim)}
 
-/* ---- Panels / cards premium ---- */
+/* ---- Painéis: superfícies com vidro suave ---- */
 .panel{
-  background:linear-gradient(160deg,rgba(21,27,39,.92),rgba(12,16,24,.9));
-  border:1px solid rgba(255,255,255,.07);
-  border-radius:18px;
-  backdrop-filter:blur(8px);
-  -webkit-backdrop-filter:blur(8px);
-  transition:transform .2s ease,box-shadow .2s ease,border-color .2s ease;
+  background:linear-gradient(160deg,rgba(21,29,45,.92),rgba(13,18,28,.92));
+  border:1px solid var(--border);
+  border-radius:16px;
+  box-shadow:0 10px 34px rgba(0,0,0,.18);
 }
-.panel:hover{border-color:rgba(255,92,109,.3)}
+.panel-head h2,.panel-head h3{letter-spacing:-.02em}
 .insight-card{
-  background:linear-gradient(160deg,rgba(26,32,48,.95),rgba(15,20,31,.95));
-  border:1px solid rgba(112,82,255,.25);
-  border-radius:18px;
-  position:relative;overflow:hidden;
+  background:linear-gradient(160deg,#161d33,#101525);
+  border:1px solid rgba(176,107,255,.22);
 }
-.insight-card::before{
-  content:"";position:absolute;top:-60%;right:-20%;width:240px;height:240px;
-  border-radius:50%;background:radial-gradient(circle,rgba(112,82,255,.28),transparent 65%);
-  filter:blur(24px);
-}
-.insight-card h3{background:linear-gradient(90deg,#fff,#cfc8ff);-webkit-background-clip:text;background-clip:text;color:transparent}
 
-/* ---- Buttons ---- */
-.primary,button[data-go],.stock-file-picker,.category-buttons button,.short-tabs button{
-  transition:transform .16s ease,box-shadow .2s ease,filter .2s ease,background .2s ease;
+/* ---- Botões ---- */
+.primary,button[data-go]{
+  transition:transform .16s ease,box-shadow .2s ease,filter .2s ease;
 }
-.primary:hover,button[data-go]:hover{
+.primary{
+  background:linear-gradient(135deg,var(--brand),#c81e3a);
+  box-shadow:0 8px 22px rgba(255,59,59,.28);
+}
+.primary:hover{
+  transform:translateY(-1px);
+  filter:brightness(1.07);
+  box-shadow:0 12px 30px rgba(255,59,59,.38);
+}
+.primary:active{transform:translateY(0)}
+
+/* ---- Formulário (login) ---- */
+.login-gate{
+  background:radial-gradient(1000px 520px at 15% 5%, rgba(255,59,59,.14), transparent 55%),
+             radial-gradient(900px 500px at 90% 100%, rgba(176,107,255,.14), transparent 55%),
+             #0a0f1a;
+}
+.login-card{border-radius:18px;border-color:var(--border);box-shadow:var(--glow)}
+.login-tab.active{box-shadow:inset 3px 0 0 var(--brand)}
+.login-card input:focus{border-color:#6d63ed;box-shadow:0 0 0 3px rgba(109,99,237,.18)}
+
+/* ---- Cards de plataforma ---- */
+.platform-card{border-radius:18px;transition:transform .2s ease,border-color .2s ease,box-shadow .2s ease}
+.platform-card:hover{transform:translateY(-6px);box-shadow:0 24px 55px rgba(0,0,0,.34)}
+.platform-card-icon{border-radius:14px}
+
+/* ---- Canais / itens de vídeo ---- */
+.channel-account-card,.stock-item,.shorts-video-row,.shorts-stock-row,.tt-video-row{
+  transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease;
+}
+.channel-account-card:hover,.stock-item:hover,.shorts-stock-row:hover,.tt-video-row:hover{
   transform:translateY(-2px);
-  filter:brightness(1.1);
-  box-shadow:0 12px 30px rgba(255,59,59,.28);
-}
-.primary:active,button[data-go]:active{transform:translateY(0)}
-
-/* ---- Platform cards ---- */
-.platform-cards{perspective:1000px}
-.platform-card{
-  transition:transform .22s ease,border-color .22s ease,box-shadow .22s ease,background .22s ease;
-  position:relative;overflow:hidden;
-}
-.platform-card::after{
-  content:"";position:absolute;top:0;left:0;width:70%;height:100%;
-  transform:translateX(-130%);background:linear-gradient(90deg,transparent,rgba(255,255,255,.1),transparent);
-  pointer-events:none;
-}
-.platform-card:hover{transform:translateY(-7px) rotateX(1deg);box-shadow:0 26px 60px rgba(0,0,0,.35)}
-.platform-card:hover::after{animation:shine .8s ease}
-.platform-card-icon{transition:transform .25s ease}
-.platform-card:hover .platform-card-icon{transform:scale(1.12) rotate(-4deg)}
-
-/* ---- Login ---- */
-.login-gate{background:radial-gradient(circle at 20% 10%,rgba(255,59,59,.16),transparent 30%),radial-gradient(circle at 85% 90%,rgba(112,82,255,.16),transparent 34%),linear-gradient(-45deg,#080b12,#0d0f1c,#0a0d16);background-size:220% 220%;animation:aurora 16s ease infinite}
-.login-card{animation:fadeInUp .5s ease both;overflow:hidden;position:relative}
-.login-card::before{content:"";position:absolute;top:-80px;right:-80px;width:220px;height:220px;border-radius:50%;background:radial-gradient(circle,rgba(255,59,59,.22),transparent 65%);filter:blur(26px)}
-.login-brand,.login-card form{position:relative}
-.login-tab{transition:background .2s ease,color .2s ease}
-.login-card input{transition:border-color .2s ease,box-shadow .2s ease}
-
-/* ---- Channel cards ---- */
-.channel-account-card{
-  transition:transform .2s ease,border-color .2s ease,box-shadow .2s ease;
-}
-.channel-account-card:hover{transform:translateY(-3px);box-shadow:0 14px 36px rgba(0,0,0,.28)}
-
-/* ---- Video/stock rows ---- */
-.stock-item,.shorts-video-row,.tt-video-row,.shorts-stock-row{
-  transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease;
-}
-.stock-item:hover,.shorts-video-row:hover,.shorts-stock-row:hover{
-  transform:translateX(3px);
-  border-color:rgba(255,92,109,.4);
-  box-shadow:0 10px 26px rgba(0,0,0,.24);
+  border-color:rgba(255,92,109,.35);
+  box-shadow:0 12px 30px rgba(0,0,0,.22);
 }
 
-/* ---- Toast / status dots ---- */
-.status-dot,.status{transition:transform .2s ease}
-.status-dot.ready,.status.ready{animation:pulseGlow 2.6s ease infinite}
+/* ---- Indicadores de status com animação sutil ---- */
+.status-dot.ready,.status.ready{animation:pulseDot 2.4s ease infinite}
 
-/* ---- Scrollbar premium ---- */
-::-webkit-scrollbar{width:11px;height:11px}
-::-webkit-scrollbar-track{background:#0a0d16}
-::-webkit-scrollbar-thumb{background:linear-gradient(180deg,#2a3242,#1c2230);border-radius:99px;border:2px solid #0a0d16}
-::-webkit-scrollbar-thumb:hover{background:linear-gradient(180deg,#ff3b3b,#b06bff)}
+/* ---- Scrollbar elegante ---- */
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-track{background:#0a0f1a}
+::-webkit-scrollbar-thumb{background:#232d40;border-radius:99px;border:2px solid #0a0f1a}
+::-webkit-scrollbar-thumb:hover{background:linear-gradient(180deg,var(--brand),var(--brand-2))}
 
-/* ---- Focus rings bonitos ---- */
-:focus-visible{outline:2px solid #ff5c6d;outline-offset:2px;border-radius:6px}
+/* ---- Foco acessível e bonito ---- */
+:focus-visible{outline:2px solid var(--brand);outline-offset:2px;border-radius:6px}
 
-/* ---- Seletor de arquivo / dropzone ---- */
-.stock-file-picker,.upload-box{border-radius:14px}
-.stock-file-picker:hover{transform:translateY(-2px)}
+/* ---- Entrada suave (só no primeiro carregamento) ---- */
+.main>section.view{animation:fadeUp .4s ease both}
+.stats-grid>article,.panel,.insight-card,.hero,.platform-card{animation:fadeUp .35s ease both}
 
-/* ---- Spinner/loading existentes ganham rotação suave ---- */
-.loading,.spinner,[class*="spinner"],.spark{animation:spinSlow 1.2s linear infinite}
-
-/* ---- Reduzimos movimento se o usuario preferir ---- */
+/* ---- Reduzir movimento a pedido do usuário ---- */
 @media (prefers-reduced-motion:reduce){
   *{animation:none!important;transition:none!important}
 }
