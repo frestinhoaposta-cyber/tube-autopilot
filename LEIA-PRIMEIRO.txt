@@ -1,0 +1,6 @@
+1. Clique duas vezes em INSTALAR-FACIL.bat
+2. Se o Windows pedir permissao para instalar Node.js, aceite.
+3. Quando aparecer INSTALACAO CONCLUIDA, abra o .env.
+4. Configure as credenciais do Google.
+5. Clique duas vezes em INICIAR.bat.
+6. Abra http://localhost:3000

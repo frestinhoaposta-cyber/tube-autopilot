@@ -1,0 +1,414 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Tube AutoPilot</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+  <style>.title-suggestions{display:grid;gap:8px}.title-suggestions>small{color:var(--muted);font-weight:700}.title-option{border:1px solid #28303e;background:#0b1017;color:#dce2eb;border-radius:10px;padding:11px 12px;text-align:left;cursor:pointer;font-size:12px;line-height:1.4}.title-option:hover,.title-option.active{border-color:var(--accent);background:#21131a;color:#fff}</style>
+<style>.stock-add-row{grid-template-columns:1fr 1fr 1.5fr auto}.shorts-capacity{display:flex;gap:10px;flex-wrap:wrap;margin:-4px 0 14px}.shorts-capacity span{padding:7px 10px;border-radius:8px;background:#0b1017;border:1px solid #28303e;color:#aeb8c7;font-size:11px}.shorts-capacity strong{color:#35d07f}</style>
+</head>
+<body class="logged-out">
+  <section id="login" class="login-gate" aria-label="Acesso ao painel">
+    <div class="login-gate-inner">
+      <div class="login-brand"><span class="platform-gate-logo">▶</span><span>Tube AutoPilot</span></div>
+      <div class="login-card">
+        <div class="login-tabs">
+          <button type="button" class="login-tab active" data-login-tab="login">Entrar</button>
+          <button type="button" class="login-tab" data-login-tab="register">Criar conta</button>
+        </div>
+        <form id="loginForm" novalidate>
+          <label>E-mail<input id="loginEmail" type="email" required autocomplete="email" placeholder="voce@exemplo.com"></label>
+          <label>Senha<input id="loginPassword" type="password" required minlength="6" autocomplete="current-password" placeholder="Mínimo 6 caracteres"></label>
+          <div id="login-error" class="login-error" role="alert"></div>
+          <button type="submit" id="loginSubmit" class="primary full">Entrar</button>
+        </form>
+      </div>
+    </div>
+  </section>
+  <section id="platformGate" class="platform-gate" aria-label="Escolha uma plataforma">
+    <div class="platform-gate-inner">
+      <div class="platform-gate-brand"><span class="platform-gate-logo">▶</span><span>Tube AutoPilot</span></div>
+      <span class="platform-gate-kicker">CENTRAL DE CONTEÚDO</span>
+      <h1>Onde você quer publicar?</h1>
+      <p class="platform-gate-copy">Escolha uma plataforma para abrir seu painel. Seu fluxo atual do YouTube continua intacto e as próximas redes já ficam organizadas no mesmo lugar.</p>
+      <div class="platform-cards">
+        <button type="button" class="platform-card platform-card-youtube" data-platform="youtube">
+          <span class="platform-card-icon">▶</span>
+          <span class="platform-card-content"><strong>YouTube</strong><small>Shorts, vídeos, estoque e agendamentos</small></span>
+          <span id="youtubePlatformStatus" class="platform-status ready">Disponível</span>
+          <span class="platform-card-arrow">→</span>
+        </button>
+        <button type="button" class="platform-card" data-platform="tiktok">
+          <span class="platform-card-icon platform-card-icon-tiktok">♪</span>
+          <span class="platform-card-content"><strong>TikTok</strong><small>Vídeos, fila, agendamento e conta conectada</small></span>
+          <span id="tiktokPlatformStatus" class="platform-status ready">Disponível</span>
+          <span class="platform-card-arrow">→</span>
+        </button>
+        <button type="button" class="platform-card" data-platform="instagram">
+          <span class="platform-card-icon platform-card-icon-instagram">◎</span>
+          <span class="platform-card-content"><strong>Instagram</strong><small>Reels e publicações em preparação</small></span>
+          <span class="platform-status soon">Em breve</span>
+          <span class="platform-card-arrow">→</span>
+        </button>
+      </div>
+      <div class="platform-gate-footer"><span>1 painel</span><i></i><span>3 plataformas</span><i></i><span>fluxo simples</span></div>
+    </div>
+  </section>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-mark">▶</span><span>Tube AutoPilot</span></div><button id="switchPlatformBtn" class="platform-switch" type="button"><span id="currentPlatformIcon">▶</span><span><small>PLATAFORMA</small><strong id="currentPlatformName">YouTube</strong></span><b>⌄</b></button>
+      <nav id="youtubeNav">
+        <button class="nav-item active" data-view="dashboard">⌂ <span>Dashboard</span></button>
+        <button class="nav-item" data-view="generator">✦ <span>Gerar conteúdo</span></button>
+        <button class="nav-item" data-view="schedule">◷ <span>Agendamento</span></button>
+        <button class="nav-item" data-view="library">▦ <span>Biblioteca</span></button>
+<button class="nav-item" data-view="shorts">📱 <span>Shorts</span></button>
+        <button class="nav-item" data-view="schedules">📅 <span>Agendamentos</span></button>
+        <button class="nav-item" data-view="metadata">📝 <span>Metadados</span></button>
+        <button class="nav-item" data-view="channel">📺 <span>Canal</span></button>
+        <button class="nav-item" data-view="settings">⚙ <span>Configurações</span></button>
+      </nav>
+      <nav id="tiktokNav" class="hidden">
+        <button class="nav-item" data-view="tiktok-dashboard">⌂ <span>Dashboard</span></button>
+        <button class="nav-item" data-view="tiktok-videos">♪ <span>Vídeos TikTok</span></button>
+        <button class="nav-item" data-view="tiktok-schedules">📅 <span>Agendamentos</span></button>
+        <button class="nav-item" data-view="tiktok-account">👤 <span>Conta TikTok</span></button>
+        <button class="nav-item" data-view="tiktok-settings">⚙ <span>Configurações</span></button>
+      </nav>
+      <div class="sidebar-bottom">
+        <div class="sidebar-user"><span class="sidebar-user-icon">👤</span><span id="user-email"></span></div>
+        <div class="plan-card">
+          <small>PLANO ATUAL</small>
+          <strong>Starter</strong>
+          <span>7 de 20 vídeos usados</span>
+          <div class="progress"><i style="width:35%"></i></div>
+          <button>Fazer upgrade</button>
+        </div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <button id="menuBtn" class="menu-btn">☰</button>
+          <span class="eyebrow" id="platformEyebrow">AUTOMAÇÃO PARA YOUTUBE</span>
+        </div>
+        <div class="profile" id="topProfile"><span class="status-dot" id="topStatusDot"></span><span id="topChannelText">YouTube desconectado</span><div class="avatar" id="topAvatar">YT</div><button id="logoutBtn" class="logout-btn" type="button">Sair</button></div>
+      </header>
+
+      <section class="view active" id="dashboard">
+        <div class="hero">
+          <div><span class="pill">IA + AGENDAMENTO</span><h1>Publique melhor.<br><em>Trabalhe menos.</em></h1><p>Envie o vídeo, gere metadados com IA e programe sua publicação em poucos minutos.</p></div>
+          <button class="primary" data-go="generator">＋ Novo vídeo</button>
+        </div>
+        <div class="stats-grid">
+          <article><span>Vídeos agendados</span><strong>12</strong><small>+3 nesta semana</small></article>
+          <article><span>Vídeos disponíveis</span><strong id="dashLongAvailable">0</strong><small>Estoque de vídeos longos</small></article>
+          <article><span>Agendados</span><strong id="dashScheduled">0</strong><small>Estimativa mensal</small></article>
+          <article><span>Score médio de SEO</span><strong>87</strong><small>Ótima otimização</small></article>
+        </div>
+        <div class="panel two-col">
+          <div>
+            <div class="panel-head"><h2>Próximas publicações</h2><button class="text-btn" data-go="schedule">Ver agenda →</button></div>
+            <div id="upcomingList" class="video-list"></div>
+          </div>
+          <div class="insight-card"><span class="spark">✦</span><h3>Sugestão da IA</h3><p>Seus vídeos publicados entre 18h e 21h têm melhor potencial de alcance. Considere manter esse horário nas próximas postagens.</p><button data-go="schedule">Criar agendamento</button></div>
+        </div>
+      </section>
+
+      <section class="view" id="generator">
+        <div class="section-title"><span class="pill">CRIADOR COM IA</span><h1>Prepare seu próximo vídeo</h1><p>Adicione o vídeo e use a IA para criar os metadados.</p></div>
+        <div class="workspace-grid">
+          <div class="panel form-panel">
+            <label>Canal do YouTube<select id="generatorAccount" class="youtube-account-select"></select></label>
+            <label>Categoria<select id="generatorCategory"><option value="brainrot">🧠 Roube um Brainrot</option></select></label>
+            <label class="upload-box" for="videoFile"><input id="videoFile" type="file" accept="video/*"><span class="upload-icon">⇧</span><strong>Arraste seu vídeo aqui</strong><span>ou clique para selecionar MP4, MOV ou WEBM</span><small id="fileName">Nenhum arquivo selecionado</small></label>
+            <label>Tema do vídeo<input id="topic" placeholder="Ex.: Como crescer um canal gamer em 2026"></label>
+            <label>Palavras-chave<input id="keywords" placeholder="youtube, canal gamer, crescimento"></label>
+            <label>Estilo<select id="tone"><option value="viral">Chamativo / Viral</option><option value="seo">SEO / Educativo</option><option value="clean">Limpo / Profissional</option></select></label>
+            <div class="category-metadata-note">Categoria YouTube: <strong id="generatorYoutubeCategory">Jogos</strong></div>
+            <button id="generateBtn" class="primary full">✦ Gerar título e aplicar metadados</button>
+          </div>
+          <div class="panel result-panel">
+            <div class="panel-head"><h2>Resultado</h2><span id="aiStatus" class="badge muted">Aguardando</span></div>
+            <div id="titleSuggestions" class="title-suggestions hidden"></div>
+            <label>Título<textarea id="resultTitle" rows="2" placeholder="O título aparecerá aqui..."></textarea></label>
+            <label>Descrição<textarea id="resultDescription" rows="9" placeholder="A descrição aparecerá aqui..."></textarea></label>
+            <label>Tags<textarea id="resultTags" rows="3" placeholder="As tags aparecerão aqui..."></textarea></label>
+            <button class="secondary full" data-go="schedule">Continuar para agendamento →</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="view" id="schedule">
+        <div class="section-title"><span class="pill">CALENDÁRIO</span><h1>Agende suas publicações</h1><p>Organize a fila e escolha quando cada vídeo deve ser publicado.</p></div>
+        <div class="workspace-grid schedule-layout">
+          <div class="panel form-panel">
+            <label>Publicar no canal<select id="scheduleAccount" class="youtube-account-select"></select></label>
+            <label>Título do vídeo<input id="scheduleTitle" placeholder="Título do vídeo"></label>
+            <div class="form-row"><label>Data<input id="scheduleDate" type="date"></label><label>Hora<input id="scheduleTime" type="time" value="19:00"></label></div>
+            <label>Visibilidade<select id="visibility"><option>Público</option><option>Não listado</option><option>Privado</option></select></label>
+            <label class="check"><input id="notify" type="checkbox" checked><span>Notificar inscritos ao publicar</span></label>
+            <button id="scheduleBtn" class="primary full">⬆ Enviar / agendar no YouTube</button>
+            <div id="uploadProgressWrap" class="upload-progress-wrap"><div class="progress"><i id="uploadProgress" style="width:0%"></i></div><small id="uploadProgressText">Aguardando envio</small></div>
+            <p class="hint">Para publicação futura como Público, o vídeo é enviado como privado e o YouTube publica no horário escolhido.</p>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><h2>Fila de publicação</h2><span class="badge" id="queueCount">0 vídeos</span></div>
+            <div id="queue" class="queue"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="view" id="library">
+        <div class="section-title stock-title"><span class="pill">UPLOAD EM MASSA</span><h1>Estoque de vídeos</h1><p>Adicione vários vídeos, revise os metadados e envie ou agende pelo YouTube.</p></div>
+        <div class="panel stock-channel-panel"><div><strong>Canais do YouTube</strong><small>Cada canal possui seu próprio estoque, agendamentos e erros.</small></div><div id="stockChannelTabs" class="stock-channel-tabs"></div><a class="secondary button-link" href="/api/auth/google?returnTo=/%23library">+ Conectar outro canal</a></div>
+        <div class="panel stock-add-panel">
+          <div class="stock-add-row">
+            <label>Categoria<select id="stockCategory"><option value="brainrot">🧠 Roube um Brainrot</option></select></label>
+            <label class="stock-file-picker" id="stockDropZone" for="stockFiles"><input id="stockFiles" type="file" accept="video/*" multiple><strong>⇧ Arraste e solte seus vídeos aqui</strong><span>ou clique para selecionar · MP4, MOV, WEBM, MKV ou AVI</span></label>
+            <button id="addStockBtn" class="primary">Adicionar ao estoque</button>
+          </div>
+          <small id="stockFileSummary" class="hint">Nenhum vídeo selecionado. Arraste os arquivos para a área acima ou clique para escolher (lotes de até 100 por envio).</small>
+          <div class="progress"><i id="stockUploadProgress" style="width:0%"></i></div>
+        </div>
+        <div class="stock-stats"><article><strong id="stockAvailable">0</strong><span>Disponíveis</span></article><article><strong id="stockScheduled">0</strong><span>Agendados</span></article><article><strong id="stockPublished">0</strong><span>Publicados</span></article><article><strong id="stockErrors">0</strong><span>Erros</span></article></div>
+        <div id="stockBulkBar" class="panel stock-bulk-bar hidden"><strong><span id="stockSelectedCount">0</span> selecionados</strong><select id="stockAssignAccount"></select><button id="stockAssignBtn" class="secondary">Mover para o canal</button><button id="bulkRegenerateBtn" class="secondary">Gerar novos títulos</button><button id="bulkScheduleBtn" class="secondary">Agendar selecionados</button><button id="bulkSendBtn" class="primary">Enviar selecionados</button><button id="bulkDeleteBtn" class="danger">Excluir selecionados</button></div>
+        <div class="panel stock-list-panel"><div class="panel-head"><label class="check"><input id="stockSelectAll" type="checkbox"><span>Selecionar todos</span></label><div class="short-tabs"><button class="secondary active" data-stock-status="AVAILABLE" id="stockStatusAvailable">Disponíveis</button><button class="secondary" data-stock-status="SCHEDULED">Agendados</button><button class="secondary" data-stock-status="PUBLISHED">Publicados</button><button class="secondary" data-stock-status="ERROR">Erros</button></div><button id="refreshStockBtn" class="text-btn">Atualizar</button></div><div id="stockList" class="stock-list"><div class="empty"><p>Carregando estoque...</p></div></div></div>
+        <div id="autoSchedulePanel" class="panel auto-schedule shorts-schedule-panel hidden"><div class="panel-head"><div><h2>📅 Agendamento automático</h2><p>O sistema procura os próximos horários livres e distribui até 10 vídeos por dia.</p></div><button id="closeAutoSchedule" class="text-btn">Fechar</button></div><div class="shorts-capacity-header"><label>Começar em<input id="autoDate" type="date"></label><div id="longScheduleCapacity" class="shorts-capacity"></div></div><div class="shorts-schedule-summary"><span>Selecionados</span><strong id="autoQuantity">0</strong><span>Limite diário</span><strong>10</strong></div><button id="previewScheduleBtn" class="secondary full">Gerar prévia dos horários</button><div id="schedulePreview" class="schedule-preview"></div><div id="longScheduleConfirmBox" class="shorts-confirm-box hidden"><div><strong>Confira a prévia antes de confirmar</strong><small>Os vídeos serão enviados ao YouTube com a publicação programada.</small></div><button id="confirmScheduleBtn" class="primary">Confirmar agendamento</button></div></div>
+        <div class="section-title"><span class="pill">CONTEÚDO</span><h1>Biblioteca</h1><p>Visualize seus vídeos preparados e publicados.</p></div>
+        <div class="panel"><div class="empty"><div>▦</div><h3>Sua biblioteca ficará aqui</h3><p>Os vídeos gerados e publicados aparecerão nesta área.</p><button class="primary" data-go="generator">Criar primeiro vídeo</button></div></div>
+      </section>
+
+      <section class="view" id="shorts">
+        <div class="section-title">
+          <span class="pill">SHORTS</span>
+          <h1>📱 Upload Shorts</h1>
+          <p>Adicione, publique ou agende vários Shorts sem sair do painel.</p>
+        </div>
+
+        <div class="panel stock-channel-panel"><div><strong>Canais dos Shorts</strong><small>Escolha o canal antes de adicionar, publicar ou agendar.</small></div><div id="shortChannelTabs" class="stock-channel-tabs"></div><a class="secondary button-link" href="/api/auth/google?returnTo=/%23shorts">+ Conectar outro canal</a></div>
+
+        <div class="shorts-mode-switch panel">
+          <div>
+            <strong>Como você quer enviar?</strong>
+            <small>Use envio imediato ou distribua automaticamente em até 10 horários por dia.</small>
+          </div>
+          <div class="shorts-mode-buttons">
+            <button id="shortModeInstant" class="secondary active" type="button">⚡ Envio imediato</button>
+            <button id="shortModeSchedule" class="secondary" type="button">📅 Agendar</button>
+          </div>
+        </div>
+
+        <div class="shorts-layout">
+          <div class="shorts-main">
+            <div class="panel shorts-controls">
+              <div class="panel-head">
+                <h2>Adicionar Shorts</h2>
+                <button id="shortsRefresh" class="text-btn" type="button">Atualizar</button>
+              </div>
+
+              <div class="shorts-category-row">
+                <span>Categoria</span>
+                <div id="shortCategoryButtons" class="category-buttons"></div>
+              </div>
+
+              <div class="shorts-source-card">
+                <strong>Fonte dos vídeos</strong>
+                <div class="shorts-source-tabs">
+                  <button id="shortSourceStock" class="shorts-source-tab active" type="button">📦 Estoque / Biblioteca (<span id="shortStockCount">0</span>)</button>
+                  <button id="shortSourceLocal" class="shorts-source-tab" type="button">🎥 Arquivos locais</button>
+                </div>
+                <div id="shortStockPanel" class="shorts-stock-panel">
+                  <div class="shorts-stock-head">
+                    <label>Buscar<input id="shortStockSearch" placeholder="🔍 Buscar vídeo..."></label>
+                    <label>Ordenar<select id="shortStockSort"><option value="old">Mais antigos</option><option value="recent">Mais recentes</option><option value="title">Título A-Z</option></select></label>
+                  </div>
+                  <div id="shortStockCategories" class="category-buttons"></div>
+                  <div class="shorts-stock-counter"><span>Vídeos elegíveis: <strong id="shortStockEligible">0</strong></span><label>Quantos vídeos usar?<span><button id="shortStockMinus" type="button">−</button><input id="shortStockQuantity" type="number" min="1" value="10"><button id="shortStockPlus" type="button">+</button></span></label></div>
+                  <div id="shortStockList" class="shorts-stock-list"><div class="empty"><p>Carregando Biblioteca...</p></div></div>
+                  <div class="shorts-stock-selection"><strong id="shortStockSelectedText">Nenhum vídeo marcado</strong><small>Sem marcação, a quantidade acima será escolhida automaticamente.</small></div>
+                  <button id="addShortsFromStock" class="primary full" type="button">Adicionar 10 vídeos aos Shorts</button>
+                </div>
+              </div>
+
+              <div class="shorts-library-reuse hidden">
+                <div>
+                  <strong>Usar vídeos da Biblioteca</strong>
+                  <small>O mesmo arquivo pode virar Short em dois canais sem ocupar espaço novamente.</small>
+                </div>
+                <button id="openShortLibrary" class="secondary" type="button">Escolher da Biblioteca</button>
+              </div>
+              <div id="shortLibraryPicker" class="short-library-picker hidden">
+                <div class="panel-head"><h3>Escolha os vídeos e os canais</h3><button id="closeShortLibrary" class="text-btn" type="button">Fechar</button></div>
+                <strong class="picker-label">Canais do YouTube</strong>
+                <div id="shortLibraryChannels" class="short-library-options"></div>
+                <a class="text-btn button-link" href="/api/auth/google?returnTo=/%23shorts">+ Conectar outro canal</a>
+                <strong class="picker-label">Vídeos da Biblioteca</strong>
+                <div id="shortLibraryVideos" class="short-library-videos"></div>
+                <button id="confirmShortLibrary" class="primary full" type="button">Adicionar aos Shorts selecionados</button>
+              </div>
+
+              <div class="shorts-dropzone shorts-local-panel" id="shortsDropzone">
+                <span class="shorts-cloud">☁</span>
+                <strong>Arraste seus Shorts aqui</strong>
+                <span>MP4, MOV, WEBM ou clique para selecionar</span>
+                <label class="primary">Selecionar arquivos
+                  <input id="shortsFiles" type="file" accept="video/*" multiple hidden>
+                </label>
+              </div>
+
+              <div class="shorts-upload-footer">
+                <small id="shortsFileSummary" class="hint">Nenhum vídeo selecionado.</small>
+                <button id="addShortsBtn" class="primary" type="button">Adicionar Shorts ao estoque</button>
+              </div>
+              <div class="progress"><i id="shortsUploadProgress" style="width:0%"></i></div>
+            </div>
+
+            <div class="stock-stats shorts-stats">
+              <article><strong id="shortsAvailable">0</strong><span>Disponíveis</span></article>
+              <article><strong id="shortsScheduled">0</strong><span>Agendados</span></article>
+              <article><strong id="shortsPublished">0</strong><span>Publicados</span></article>
+              <article><strong id="shortsErrors">0</strong><span>Erros</span></article>
+            </div>
+
+            <div class="panel shorts-list-panel">
+              <div class="short-tabs">
+                <button class="secondary active" data-short-status="AVAILABLE" type="button">Disponíveis</button>
+                <button class="secondary" data-short-status="SCHEDULED" type="button">Agendados</button>
+                <button class="secondary" data-short-status="PUBLISHED" type="button">Publicados</button>
+                <button class="secondary" data-short-status="ERROR" type="button">Erros</button>
+              </div>
+              <div class="shorts-toolbar">
+                <input id="shortsSearch" placeholder="🔍 Buscar por título ou arquivo...">
+                <select id="shortsSort">
+                  <option value="recent">Mais recentes</option>
+                  <option value="old">Mais antigos</option>
+                  <option value="title">Título A-Z</option>
+                </select>
+              </div>
+
+              <div id="shortsBulkBar" class="shorts-bulkbar hidden">
+                <label class="check"><input id="shortSelectAll" type="checkbox"><span>Selecionar todos visíveis</span></label>
+                <strong><span id="shortSelectedCount">0</span> selecionado(s)</strong>
+                <div class="shorts-bulk-actions">
+                  <select id="shortAssignAccount"></select>
+                  <button id="shortAssignBtn" class="secondary" type="button">Mover para o canal</button>
+                  <button id="shortRegenerateSelected" class="secondary" type="button">✦ Novos títulos</button>
+                  <button id="shortPostSelected" class="secondary" type="button">⚡ Postar agora</button>
+                  <button id="shortScheduleSelected" class="primary" type="button">📅 Agendar selecionados</button>
+                  <button id="shortDeleteSelected" class="danger" type="button">🗑 Excluir selecionados</button>
+                  <button id="shortClearSelected" class="text-btn" type="button">Limpar</button>
+                </div>
+              </div>
+
+              <div id="shortsList" class="stock-list">
+                <div class="empty"><p>Carregando Shorts...</p></div>
+              </div>
+            </div>
+
+            <div id="shortSchedulePanel" class="panel shorts-schedule-panel hidden">
+              <div class="panel-head">
+                <div>
+                  <h2>📅 Agendamento automático</h2>
+                  <p>O sistema procura os próximos horários livres e respeita o limite de 10 Shorts por dia.</p>
+                </div>
+                <button id="shortCloseSchedule" class="text-btn" type="button">Fechar</button>
+              </div>
+
+              <div class="shorts-capacity-header">
+                <label>Começar em
+                  <input id="shortScheduleDate" type="date">
+                </label>
+                <div id="shortsCapacity" class="shorts-capacity"></div>
+              </div>
+
+              <div class="shorts-schedule-summary">
+                <span>Selecionados</span><strong id="shortScheduleCount">0</strong>
+                <span>Limite diário</span><strong>10</strong>
+              </div>
+
+              <button id="shortPreviewSchedule" class="secondary full" type="button">Gerar prévia dos horários</button>
+              <div id="shortSchedulePreview" class="schedule-preview"></div>
+
+              <div id="shortScheduleConfirmBox" class="shorts-confirm-box hidden">
+                <div>
+                  <strong>Confira a prévia antes de confirmar</strong>
+                  <small>Os vídeos serão enviados ao YouTube já com a data de publicação programada.</small>
+                </div>
+                <button id="shortConfirmSchedule" class="primary" type="button">Confirmar agendamento</button>
+              </div>
+            </div>
+          </div>
+
+          <aside class="shorts-sidebar">
+            <div class="panel capacity-panel">
+              <span class="pill">AUTOMAÇÃO</span>
+              <h3>10 Shorts por dia</h3>
+              <p>Os horários são distribuídos automaticamente nos próximos espaços disponíveis.</p>
+              <div id="shortsCapacitySide" class="shorts-capacity-side"><span>Carregando capacidade...</span></div>
+            </div>
+            <div class="panel capacity-panel">
+              <span class="pill">STATUS</span>
+              <h3 id="shortModeLabel">Envio imediato</h3>
+              <p id="shortModeHelp">Selecione os Shorts disponíveis e clique em “Postar agora”.</p>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <section class="view" id="tiktok-dashboard">
+        <div class="hero tiktok-hero">
+          <div><span class="pill">TIKTOK AUTOPILOT</span><h1>Publique no TikTok.<br><em>Sem complicação.</em></h1><p>Adicione vídeos, prepare a legenda e envie agora ou deixe na fila para o horário escolhido.</p></div>
+          <button class="primary" data-go="tiktok-videos">＋ Adicionar vídeos</button>
+        </div>
+        <div class="stats-grid">
+          <article><span>Disponíveis</span><strong id="ttDashAvailable">0</strong><small>Prontos para publicar</small></article>
+          <article><span>Agendados</span><strong id="ttDashScheduled">0</strong><small>Fila local</small></article>
+          <article><span>Enviados</span><strong id="ttDashSubmitted">0</strong><small>Enviados à API do TikTok</small></article>
+          <article><span>Erros</span><strong id="ttDashErrors">0</strong><small>Precisam de atenção</small></article>
+        </div>
+        <div class="panel two-col">
+          <div><div class="panel-head"><h2>Próximos agendamentos</h2><button class="text-btn" data-go="tiktok-schedules">Ver agenda →</button></div><div id="ttUpcoming" class="queue"></div></div>
+          <div class="insight-card tiktok-insight"><span class="spark">♪</span><h3>TikTok conectado ao painel</h3><p>O envio usa a API oficial. O agendamento é executado pelo seu programa local, então mantenha o Tube AutoPilot aberto no horário programado.</p><button data-go="tiktok-account">Ver conta</button></div>
+        </div>
+      </section>
+
+      <section class="view" id="tiktok-videos">
+        <div class="section-title"><span class="pill">TIKTOK</span><h1>♪ Estoque de vídeos</h1><p>Adicione vídeos curtos e controle publicação, privacidade e agendamento em um único lugar.</p></div>
+        <div class="panel stock-add-panel">
+          <div class="stock-add-row tiktok-add-row"><label class="stock-file-picker">Selecionar vídeos<input id="ttFiles" type="file" accept="video/*" multiple></label><button id="ttAddBtn" class="primary">Adicionar ao estoque TikTok</button></div>
+          <small id="ttFileSummary" class="hint">Nenhum vídeo selecionado.</small><div class="progress"><i id="ttUploadProgress" style="width:0%"></i></div>
+        </div>
+        <div class="stock-stats"><article><strong id="ttAvailable">0</strong><span>Disponíveis</span></article><article><strong id="ttScheduled">0</strong><span>Agendados</span></article><article><strong id="ttSubmitted">0</strong><span>Enviados</span></article><article><strong id="ttErrors">0</strong><span>Erros</span></article></div>
+        <div id="ttBulkBar" class="panel stock-bulk-bar hidden"><strong><span id="ttSelectedCount">0</span> selecionados</strong><button id="ttScheduleSelected" class="secondary">📅 Agendar</button><button id="ttPublishSelected" class="primary">♪ Publicar agora</button><button id="ttClearSelected" class="text-btn">Limpar</button></div>
+        <div class="panel stock-list-panel"><div class="panel-head"><label class="check"><input id="ttSelectAll" type="checkbox"><span>Selecionar todos</span></label><div class="short-tabs"><button class="secondary active" data-tt-status="AVAILABLE">Disponíveis</button><button class="secondary" data-tt-status="SCHEDULED">Agendados</button><button class="secondary" data-tt-status="SUBMITTED">Enviados</button><button class="secondary" data-tt-status="ERROR">Erros</button></div><button id="ttRefresh" class="text-btn">Atualizar</button></div><div id="ttList" class="stock-list"><div class="empty"><p>Carregando vídeos do TikTok...</p></div></div></div>
+        <div id="ttSchedulePanel" class="panel auto-schedule hidden"><div class="panel-head"><div><h2>📅 Agendar no TikTok</h2><p>A fila será executada pelo Tube AutoPilot no horário definido.</p></div><button id="ttCloseSchedule" class="text-btn">Fechar</button></div><div class="schedule-fields"><label>Quantidade<input id="ttScheduleQty" readonly></label><label>Data<input id="ttScheduleDate" type="date"></label><label>Hora<input id="ttScheduleTime" type="time" value="19:00"></label><label>Intervalo<select id="ttScheduleInterval"><option value="30">30 minutos</option><option value="60" selected>1 hora</option><option value="120">2 horas</option><option value="180">3 horas</option></select></label></div><button id="ttConfirmSchedule" class="primary full">Confirmar agendamento</button><p class="hint">Importante: para publicar no horário, o servidor precisa estar rodando com <strong>npm start</strong>.</p></div>
+      </section>
+
+      <section class="view" id="tiktok-schedules"><div class="section-title"><span class="pill">TIKTOK</span><h1>📅 Agendamentos TikTok</h1><p>Veja a fila que será enviada automaticamente quando chegar o horário.</p></div><div class="panel"><div id="ttScheduleList" class="queue"></div></div></section>
+
+      <section class="view" id="tiktok-account"><div class="section-title"><span class="pill">TIKTOK</span><h1>👤 Conta TikTok</h1><p>Conecte a conta que receberá os vídeos.</p></div><div class="panel channel-panel"><div id="ttAccountDetails"><p>Carregando conta...</p></div><a class="primary button-link" href="/api/tiktok/auth">Conectar / Reconectar TikTok</a><button id="ttDisconnect" class="secondary">Desconectar</button></div></section>
+
+      <section class="view" id="tiktok-settings"><div class="section-title"><span class="pill">TIKTOK</span><h1>⚙ Configurações TikTok</h1><p>Configure Login Kit e Content Posting API para publicar pelo painel.</p></div><div class="settings-grid"><article class="panel setting"><div class="setting-icon">♪</div><div><h3>Content Posting API</h3><p id="ttSettingText">Verificando configuração...</p><small id="ttRedirectUri"></small></div><div class="setting-actions"><a class="secondary button-link" href="/api/tiktok/auth">Conectar TikTok</a></div></article><article class="panel setting"><div class="setting-icon">.env</div><div><h3>Credenciais</h3><p>Preencha TIKTOK_CLIENT_KEY, TIKTOK_CLIENT_SECRET e TIKTOK_REDIRECT_URI no arquivo .env.</p></div><span class="badge muted">Servidor</span></article></div></section>
+
+      <section class="view" id="schedules"><div class="section-title"><span class="pill">AGENDA</span><h1>📅 Agendamentos</h1><p>Visualize os próximos envios do sistema.</p></div><div class="panel"><div class="panel-head"><h2>Fila do YouTube</h2><label>Canal<select id="schedulesAccount" class="youtube-account-select"><option value="">Todos os canais</option></select></label></div><div id="scheduleList" class="queue"><div class="empty"><p>Carregando agendamentos...</p></div></div></div></section>
+      <section class="view" id="metadata"><div class="section-title"><span class="pill">CONFIGURAÇÃO</span><h1>📝 Metadados</h1><p>Visualize os metadados por categoria usando a configuração central.</p></div><div class="panel metadata-panel"><label>Categoria<select id="metadataCategory"></select></label><label>Descrição<textarea id="metadataDescription" rows="8"></textarea></label><label>Tags<textarea id="metadataTags" rows="4"></textarea></label><label>Categoria YouTube<input id="metadataYoutubeCategory"></label><label>Templates LONG<textarea id="metadataLongTemplates" rows="3"></textarea></label><label class="check"><input id="metadataCommentEnabled" type="checkbox"> Comentário automático</label><button id="saveMetadata" class="primary">Salvar metadados</button></div></section>
+      <section class="view" id="channel"><div class="section-title"><span class="pill">CONTAS</span><h1>📺 Canais conectados</h1><p>Gerencie separadamente os canais autorizados no mesmo projeto Google Cloud.</p></div><div class="panel"><div class="panel-head"><div><h2>Seus canais</h2><p>Cada publicação usa exclusivamente a credencial do canal escolhido.</p></div><div class="connect-actions"><select id="youtubeClientSelect" title="Escolha o cliente OAuth do YouTube usado na conexão"><option value="1">Cliente de API 1</option><option value="2">Cliente de API 2</option></select><a id="addChannelBtn" class="primary button-link" href="/api/auth/google?returnTo=/%23channel&amp;client=1">＋ Adicionar canal</a></div></div><div id="channelDetails" class="connected-channels"><p>Carregando canais...</p></div></div></section>      <section class="view" id="settings">
+        <div class="section-title"><span class="pill">CONTA</span><h1>Configurações</h1><p>Prepare as integrações necessárias para automatizar o canal.</p></div>
+        <div class="settings-grid">
+          <article class="panel setting"><div class="setting-icon">▶</div><div><h3>YouTube</h3><p id="youtubeSettingText">Conecte sua conta com OAuth 2.0 para enviar e agendar vídeos.</p><small id="youtubeConfigHint"></small></div><div class="setting-actions"><a id="connectYoutubeBtn" class="secondary button-link" href="/api/auth/google?returnTo=/%23channel">Adicionar canal</a><button class="secondary" data-go="channel">Gerenciar canais</button><button id="disconnectYoutubeBtn" class="secondary hidden" type="button">Desconectar</button></div></article>
+          <article class="panel setting"><div class="setting-icon">✦</div><div><h3>Inteligência Artificial</h3><p>Adicione uma chave de API no servidor para gerar conteúdo real.</p></div><span class="badge muted">Configurar .env</span></article>
+          <article class="panel setting"><div class="setting-icon">💬</div><div><h3>Comentário automático por canal</h3><p>Poste um comentário fixo automaticamente assim que o vídeo for publicado, somente nos canais que você escolher.</p><div id="commentChannelsList" class="comment-channels"><small>Carregando canais...</small></div><button id="saveCommentSettings" class="primary">Salvar comentários</button><small id="commentSettingsStatus"></small></div></article>
+        </div>
+      </section>
+    </main>
+  </div>
+  <div id="toast" class="toast"></div>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,42 @@
+TUBE AUTOPILOT - CONFIGURAR TIKTOK
+==================================
+
+O painel TikTok já está integrado ao projeto usando a API oficial.
+Para conectar uma conta real, você precisa criar/configurar um app no TikTok for Developers.
+
+1) Entre em developers.tiktok.com e crie um app.
+2) Habilite Login Kit.
+3) Habilite Content Posting API / Direct Post.
+4) Solicite/ative o escopo video.publish.
+5) Cadastre EXATAMENTE a Redirect URI usada no seu .env.
+
+No arquivo .env, preencha:
+
+TIKTOK_CLIENT_KEY=SUA_CLIENT_KEY
+TIKTOK_CLIENT_SECRET=SEU_CLIENT_SECRET
+TIKTOK_REDIRECT_URI=http://localhost:3000/api/tiktok/auth/callback
+
+Depois:
+- feche o npm start se estiver aberto;
+- rode npm start novamente;
+- escolha TikTok na tela inicial;
+- abra Conta TikTok;
+- clique em Conectar / Reconectar TikTok.
+
+IMPORTANTE SOBRE AGENDAMENTO
+----------------------------
+O TikTok Direct Post não recebe um publishAt como o YouTube.
+Neste projeto, o Tube AutoPilot guarda a fila localmente e faz o envio quando chega o horário.
+Por isso o npm start precisa estar rodando no horário programado.
+
+IMPORTANTE SOBRE PRIVACIDADE
+----------------------------
+O próprio TikTok informa que clientes não auditados ficam limitados a postagem privada.
+Para publicar publicamente por integração, o app precisa atender aos requisitos/aprovação do TikTok.
+
+ARQUIVOS DO TIKTOK
+------------------
+data/tiktok-inventory.json  -> estoque e fila TikTok
+data/tiktok-videos/         -> arquivos de vídeo TikTok
+data/tiktok-auth.json       -> tokens da conta conectada (criado após login)
+server/tiktok.js            -> integração TikTok

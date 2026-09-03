@@ -1,0 +1,17 @@
+# Dependências
+node_modules/
+
+# Segredos e ambiente
+.env
+.env.*
+!.env.example
+
+# Dados locais (tokens OAuth, vídeos, inventário, backups)
+data/
+!data/.gitkeep
+
+# Backups e arquivos gerados
+*.rar
+*.log
+*.tmp
+*.bak

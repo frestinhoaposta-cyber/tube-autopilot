@@ -1,0 +1,22 @@
+Base: backup original do usuário
+Alteração: aba Shorts refeita sobre a interface existente, usando o backend real de agendamento.
+
+CORREÇÃO 24/08/2026 - BIBLIOTECA DE VÍDEOS LONGOS
+- Restaurada inicialização automática da Biblioteca ao abrir a aba.
+- Upload da Biblioteca agora força contentType=LONG (Shorts ficam apenas na aba Shorts).
+- Restaurado carregamento das categorias e configurações auxiliares.
+- Testado POST /api/inventory com vídeo temporário LONG e remoção após o teste.
+
+=== 24/08/2026 - MÓDULO TIKTOK ===
+- TikTok ativado no seletor de plataformas.
+- Dashboard próprio do TikTok.
+- Estoque de vídeos TikTok separado do YouTube.
+- Upload em massa para o estoque TikTok.
+- Edição de legenda, privacidade, comentários, Dueto e Stitch.
+- Publicação via TikTok Content Posting API (requer credenciais/aprovação do app).
+- OAuth/Login Kit TikTok no backend.
+- Agendamento local persistente: Tube AutoPilot publica no horário enquanto o servidor estiver rodando.
+- Tela de agendamentos TikTok.
+- Tela de conta e configurações TikTok.
+- Controle de status e consulta de publish_id.
+- YouTube e aba Shorts existentes preservados.

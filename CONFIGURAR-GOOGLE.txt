@@ -1,0 +1,24 @@
+TUBE AUTOPILOT v2 - CONFIGURAÇÃO DO LOGIN GOOGLE / YOUTUBE
+
+1) Google Cloud Console > crie/selecione um projeto.
+2) APIs e serviços > Biblioteca > ative "YouTube Data API v3".
+3) Configure a Tela de consentimento OAuth.
+4) Enquanto estiver em modo Testing, adicione o SEU Gmail em Usuários de teste.
+5) Credenciais > Criar credenciais > ID do cliente OAuth.
+6) Tipo: Aplicativo da Web.
+7) URI de redirecionamento autorizada:
+   http://localhost:3000/api/auth/google/callback
+8) Abra o arquivo .env e preencha:
+   YOUTUBE_CLIENT_ID=...
+   YOUTUBE_CLIENT_SECRET=...
+   YOUTUBE_REDIRECT_URI=http://localhost:3000/api/auth/google/callback
+9) Salve o .env e reinicie o servidor.
+10) No site: Canais > Adicionar canal. Repita para cada canal/Brand Account.
+
+IMPORTANTE:
+- Não coloque Client Secret no app.js/index.html.
+- Se aparecer redirect_uri_mismatch, confira se a URI é EXATAMENTE igual.
+- Se o Google bloquear o acesso em Testing, confira se seu Gmail está em Usuários de teste.
+- Projetos não verificados podem ter uploads forçados para Privado até auditoria do YouTube.
+- Use o mesmo projeto e o mesmo OAuth Client para todos os canais. A cota é compartilhada.
+- Escopos usados: youtube.upload e youtube.force-ssl.
