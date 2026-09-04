@@ -145,6 +145,9 @@ module.exports = function createInventoryRouter({ oauthClient, hasGoogleConfig }
       for (const item of items) {
         if (!item.youtubeVideoId) continue;
         if (!item.commentStatus) { markPending(item); await saveItems(items); }
+        // Vídeos agendados ainda estão privados até a data de publicação no YouTube.
+        // Só postar comentário quando o vídeo estiver realmente público.
+        if (item.status !== 'PUBLISHED') continue;
         if (item.autoCommentEnabled !== true || ['POSTED', 'DISABLED'].includes(item.commentStatus)) continue;
         if (item.commentAttemptCount >= MAX_COMMENT_ATTEMPTS || item.commentStatus === 'POSTING') continue;
         if (item.lastCommentAttemptAt && Date.now() - new Date(item.lastCommentAttemptAt).getTime() < 60000) continue;
