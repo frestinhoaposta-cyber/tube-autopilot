@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { google } = require('googleapis');
 const { getAccount } = require('./oauth-store');
+const { categoriesConfig } = require('./categories');
 
 const dataDir = path.join(__dirname, '..', 'data');
 const settingsPath = path.join(dataDir, 'comment-settings.json');
@@ -30,6 +31,8 @@ function resolveComment(item) {
   if (item.commentText) return { enabled: item.autoCommentEnabled !== false, text: item.commentText };
   const category = settings.categories?.[item.category] || {};
   if (category.text) return { enabled: category.enabled !== false, text: category.text };
+  const catConfig = categoriesConfig[item.category];
+  if (catConfig?.autoComment?.text) return { enabled: catConfig.autoComment.enabled !== false, text: catConfig.autoComment.text };
   return { enabled: settings.enabled === true, text: String(settings.text || '') };
 }
 function markPending(item) {

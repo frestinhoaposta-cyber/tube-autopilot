@@ -31,21 +31,24 @@ const categoriesConfig = {
     hooks: ['NOVO SCRIPT', 'MELHOR SCRIPT', 'HACK INSANO', 'NOVO HACK', 'SCRIPT ATUALIZADO', 'SCRIPT TESTADO E APROVADO', 'SCRIPT INCRÍVEL', 'MELHOR HACK', 'SCRIPT ABSURDO', 'SCRIPT FUNCIONANDO', 'SCRIPT GRÁTIS', 'O MELHOR SCRIPT', 'NOVO SCRIPT ATUALIZADO'],
     terms: ['ROUBE UM BRAINROT', 'STEAL A BRAINROT', 'SCRIPT ROUBE UM BRAINROT', 'STEAL A BRAINROT SCRIPT'],
     benefits: ['SEM KEY', 'MOBILE E PC', 'AUTO FARM', 'AUTO COLLECT', 'SPAWN BRAINROT', 'SPAWN BRAINROT RARO', 'TODOS BRAINROTS', 'LINK DIRETO', 'FUNCIONANDO AGORA', 'GRÁTIS', 'ATUALIZADO', 'SEM KEY MOBILE', 'MOBILE PC', 'FUNCIONANDO SEM KEY'],
-    complements: ['2026', 'ROBLOX 2026', 'AGORA 2026', 'GRÁTIS 2026', 'FUNCIONANDO 2026']
+    complements: ['2026', 'ROBLOX 2026', 'AGORA 2026', 'GRÁTIS 2026', 'FUNCIONANDO 2026'],
+    autoComment: { enabled: true, text: '🔥 Incrível! Testem esse script também, funciona perfeitamente no mobile e PC!' }
   },
   tsunami: {
     id: 'tsunami', name: 'Fuja do Tsunami', emoji: '🌊', youtubeCategoryId: '20', youtubeCategoryName: 'Jogos',
     description: '🌊 FUJA DO TSUNAMI! Confira as melhores estratégias, scripts e novidades do jogo Roblox Fuja do Tsunami.',
     tags: ['fuja do tsunami','roblox','script tsunami','hack roblox','script 2026','mobile','pc','sem key','auto farm'],
     emojis: ['🌊','🔥','⚡','🏆'], hooks: ['NOVO SCRIPT','MELHOR HACK','SCRIPT FUNCIONANDO'], terms: ['FUJA DO TSUNAMI','TSUNAMI ROBLOX'], benefits: ['SEM KEY','MOBILE E PC','FUNCIONANDO 2026'], complements: ['2026','AGORA'],
-    longTitleTemplates: ['🌊 NOVO SCRIPT FUJA DO TSUNAMI 2026','🔥 MELHOR HACK FUJA DO TSUNAMI FUNCIONANDO'], shortTitleTemplates: ['🌊 SCRIPT FUJA DO TSUNAMI #shorts','🔥 NOVO HACK TSUNAMI 2026 #shorts']
+    longTitleTemplates: ['🌊 NOVO SCRIPT FUJA DO TSUNAMI 2026','🔥 MELHOR HACK FUJA DO TSUNAMI FUNCIONANDO'], shortTitleTemplates: ['🌊 SCRIPT FUJA DO TSUNAMI #shorts','🔥 NOVO HACK TSUNAMI 2026 #shorts'],
+    autoComment: { enabled: true, text: '🌊 Esse script funciona muito bem! Testem aí e me digam nos comentários se conseguiu fugir!' }
   },
   nights99: {
     id: 'nights99', name: '99 Noites na Floresta', emoji: '🌲', youtubeCategoryId: '20', youtubeCategoryName: 'Jogos',
     description: '🌲 99 NOITES NA FLORESTA! Veja novidades, estratégias e scripts para sobreviver no Roblox.',
     tags: ['99 noites na floresta','roblox','script 99 noites','hack roblox','script 2026','mobile','pc','sem key'],
     emojis: ['🌲','🔥','🧠','🏆'], hooks: ['NOVO SCRIPT','MELHOR SCRIPT','NOVO HACK'], terms: ['99 NOITES NA FLORESTA','99 NIGHTS ROBLOX'], benefits: ['SEM KEY','MOBILE E PC','FUNCIONANDO 2026'], complements: ['2026','AGORA'],
-    longTitleTemplates: ['🌲 NOVO SCRIPT 99 NOITES NA FLORESTA 2026','🏆 MELHOR SCRIPT 99 NOITES FUNCIONANDO'], shortTitleTemplates: ['🌲 SCRIPT 99 NOITES NA FLORESTA #shorts','🔥 NOVO HACK 99 NOITES 2026 #shorts']
+    longTitleTemplates: ['🌲 NOVO SCRIPT 99 NOITES NA FLORESTA 2026','🏆 MELHOR SCRIPT 99 NOITES FUNCIONANDO'], shortTitleTemplates: ['🌲 SCRIPT 99 NOITES NA FLORESTA #shorts','🔥 NOVO HACK 99 NOITES 2026 #shorts'],
+    autoComment: { enabled: true, text: '🌲 Esse script de 99 Noites é incrível! Testem e compartilhem sua experiência nos comentários!' }
   }
 };
 
