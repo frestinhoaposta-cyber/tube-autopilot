@@ -5,7 +5,7 @@ const { getAccount } = require('./oauth-store');
 const { categoriesConfig } = require('./categories');
 
 const dataDir = path.join(__dirname, '..', 'data');
-const settingsPath = path.join(dataDir, 'comment-settings.json');
+const settingsPath = process.env.COMMENT_SETTINGS_PATH ? path.resolve(process.env.COMMENT_SETTINGS_PATH) : path.join(dataDir, 'comment-settings.json');
 const MAX_COMMENT_ATTEMPTS = 5;
 if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
 if (!fs.existsSync(settingsPath)) fs.writeFileSync(settingsPath, JSON.stringify({ enabled: false, text: '', categories: {}, channels: {} }, null, 2));
@@ -36,6 +36,13 @@ function resolveComment(item) {
   return { enabled: settings.enabled === true, text: String(settings.text || '') };
 }
 function markPending(item) {
+  // Vídeos sem conta OAuth vinculada nunca conseguirão postar comentário.
+  if (!item.userId || !item.accountId) {
+    item.autoCommentEnabled = false; item.commentText = '';
+    item.commentStatus = 'DISABLED'; item.commentError = 'NO_ACCOUNT';
+    item.commentAttemptCount = 0; item.lastCommentAttemptAt = null;
+    return item;
+  }
   const choice = resolveComment(item);
   item.autoCommentEnabled = choice.enabled && Boolean(choice.text.trim()); item.commentText = choice.text;
   item.commentStatus = item.autoCommentEnabled ? 'PENDING' : 'DISABLED';
@@ -54,4 +61,19 @@ async function postComment({ auth, item }) {
   const response = await youtube.commentThreads.insert({ part: ['snippet'], requestBody: { snippet: { videoId: item.youtubeVideoId, topLevelComment: { snippet: { textOriginal: item.commentText } } } } });
   return response.data.id;
 }
-module.exports = { MAX_COMMENT_ATTEMPTS, readSettings, saveSettings, markPending, postComment, apiError };
+function reevaluateComments(items) {
+  let changed = false;
+  for (const item of items) {
+    if (!item.youtubeVideoId) continue;
+    if (!['PUBLISHED', 'SCHEDULED'].includes(item.status)) continue;
+    // Reavaliar vídeos que estavam DISABLED (podiam ter sido desativados antes
+    // da configuração de comentário ser feita). Também reavalia PENDING sem conta
+    // para garantir consistência.
+    if (item.commentStatus === 'DISABLED' || (item.commentStatus === 'PENDING' && item.commentError === 'AUTH_REQUIRED')) {
+      markPending(item);
+      changed = true;
+    }
+  }
+  return changed;
+}
+module.exports = { MAX_COMMENT_ATTEMPTS, readSettings, saveSettings, markPending, postComment, apiError, reevaluateComments };

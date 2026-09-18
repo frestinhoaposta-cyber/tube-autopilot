@@ -5,7 +5,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { google } = require('googleapis');
 const { categoriesConfig, generateTitle, generateShortTitle, normalizeTitle, publicCategories, buildYoutubeSnippet, MAX_SHORTS_PER_DAY, SHORTS_DAILY_SLOTS } = require('./categories');
-const { MAX_COMMENT_ATTEMPTS, readSettings, saveSettings, markPending, postComment, apiError } = require('./comments');
+const { MAX_COMMENT_ATTEMPTS, readSettings, saveSettings, markPending, postComment, apiError, reevaluateComments } = require('./comments');
 const { getAccount, getAccountByUserAndId, getAuthenticatedYouTubeClient, getAccountAuthStatus, assertAccountOwnership } = require('./oauth-store');
 
 module.exports = function createInventoryRouter({ oauthClient, hasGoogleConfig }) {
@@ -32,6 +32,13 @@ module.exports = function createInventoryRouter({ oauthClient, hasGoogleConfig }
   let writeQueue = Promise.resolve();
   let shortsScheduleLock = Promise.resolve();
   let commentWorkerBusy = false;
+  // Erros transitórios de comentário (rede, token) voltam a ser tentados
+  // automaticamente após este intervalo, se a conta estiver conectada.
+  const COMMENT_RETRY_COOLDOWN_MS = 30 * 60 * 1000;
+  // Falha de comentário logo após a publicação costuma ser temporária: o
+  // YouTube demora alguns minutos até liberar o vídeo para comentários.
+  // Dentro desta janela, COMMENTS_DISABLED é tratado como transitório.
+  const COMMENT_PUBLISH_GRACE_MS = 2 * 60 * 60 * 1000;
   let schedulerTimer = null;
   const schedulerLocks = new Set();
   function readItems() {
@@ -127,6 +134,7 @@ module.exports = function createInventoryRouter({ oauthClient, hasGoogleConfig }
       markPending(item);
       item.uploadedAt = new Date().toISOString();
       item.scheduledAt = publishAt ? new Date(publishAt).toISOString() : null;
+      item.publishedAt = publishAt ? null : new Date().toISOString();
       item.status = publishAt ? 'SCHEDULED' : 'PUBLISHED';
       item.error = null;
       return item;
@@ -135,6 +143,12 @@ module.exports = function createInventoryRouter({ oauthClient, hasGoogleConfig }
     } finally {
       const latest = readItems(); const index = latest.findIndex(v => v.id === item.id); if (index >= 0) latest[index] = item; await saveItems(latest);
     }
+  }
+
+  function publishedWithinGrace(item) {
+    const publishedAt = item.publishedAt || item.uploadedAt;
+    if (!publishedAt) return false;
+    return Date.now() - new Date(publishedAt).getTime() < COMMENT_PUBLISH_GRACE_MS;
   }
 
   async function processComments() {
@@ -148,21 +162,61 @@ module.exports = function createInventoryRouter({ oauthClient, hasGoogleConfig }
         // Vídeos agendados ainda estão privados até a data de publicação no YouTube.
         // Só postar comentário quando o vídeo estiver realmente público.
         if (item.status !== 'PUBLISHED') continue;
+        // Numa falha transitória o vídeo pode ter ficado DISABLED com
+        // COMMENTS_DISABLED. Dentro da janela de graça dá-se nova chance:
+        // o YouTube pode ainda nem ter liberado o vídeo para comentários.
+        if (item.commentStatus === 'DISABLED' && item.commentError === 'COMMENTS_DISABLED' && publishedWithinGrace(item)) {
+          markPending(item);
+          await saveItems(items);
+        }
         if (item.autoCommentEnabled !== true || ['POSTED', 'DISABLED'].includes(item.commentStatus)) continue;
+        // Erros transitórios (rede/token) não são permanentes: após um cooldown
+        // e com a conta conectada, o comentário volta a ser tentado sozinho.
+        // COMMENTS_DISABLED também é transitório dentro da janela pós-publicação
+        // (o YouTube libera o vídeo para comentários com atraso).
+        if (item.commentStatus === 'ERROR' && item.commentAttemptCount >= MAX_COMMENT_ATTEMPTS) {
+          if (['VIDEO_NOT_FOUND', 'OAUTH_PERMISSION'].includes(item.commentError)) continue;
+          if (item.commentError === 'COMMENTS_DISABLED' && !publishedWithinGrace(item)) {
+            item.commentStatus = 'DISABLED'; item.commentError = 'COMMENTS_DISABLED';
+            console.log(`[comment] video=${item.id} sem comentários disponíveis`);
+            await saveItems(items); continue;
+          }
+          if (item.lastCommentAttemptAt && Date.now() - new Date(item.lastCommentAttemptAt).getTime() < COMMENT_RETRY_COOLDOWN_MS) continue;
+          const retryAccount = item.userId && item.accountId ? getAccountByUserAndId(item.userId, item.accountId) : null;
+          if (!retryAccount || getAccountAuthStatus(retryAccount.accountId) === 'RECONNECT_REQUIRED') continue;
+          item.commentStatus = 'PENDING'; item.commentAttemptCount = 0; item.commentError = null;
+          console.log(`[comment] reavaliando video=${item.id} após erro transitório`);
+          await saveItems(items); continue;
+        }
         if (item.commentAttemptCount >= MAX_COMMENT_ATTEMPTS || item.commentStatus === 'POSTING') continue;
         if (item.lastCommentAttemptAt && Date.now() - new Date(item.lastCommentAttemptAt).getTime() < 60000) continue;
+        // Vídeos sem conta OAuth não podem comentar — marcar como DISABLED e não desperdiçar tentativas.
+        if (!item.userId || !item.accountId) {
+          item.commentStatus = 'DISABLED'; item.commentError = 'NO_ACCOUNT'; item.autoCommentEnabled = false;
+          console.log(`[comment] skip video=${item.id} (sem conta atribuída)`);
+          await saveItems(items); continue;
+        }
         item.commentStatus = 'POSTING'; item.commentAttemptCount = Number(item.commentAttemptCount || 0) + 1; item.lastCommentAttemptAt = new Date().toISOString();
         await saveItems(items);
         console.log(`[comment] posting video=${item.id}`);
         try {
-          const account = item.userId && item.accountId ? getAccountByUserAndId(item.userId, item.accountId) : null;
-          if (!item.userId || !account) { item.commentStatus = 'PENDING'; item.commentError = 'AUTH_REQUIRED'; await saveItems(items); continue; }
+          const account = getAccountByUserAndId(item.userId, item.accountId);
+          if (!account) {
+            // Conta foi desconectada — marcar DISABLED para não repetir indefinidamente.
+            item.commentStatus = 'DISABLED'; item.commentError = 'ACCOUNT_DISCONNECTED'; item.autoCommentEnabled = false;
+            console.log(`[comment] skip video=${item.id} (conta desconectada)`);
+            await saveItems(items); continue;
+          }
           item.accountId = account.accountId;
           item.youtubeCommentId = await postComment({ auth: await getAuthenticatedYouTubeClient(account), item });
           item.commentStatus = 'POSTED'; item.commentPostedAt = new Date().toISOString(); item.commentError = null;
           console.log(`[comment] success commentId=${item.youtubeCommentId}`);
         } catch (error) {
-          const normalized = apiError(error); item.commentStatus = normalized.permanent ? (normalized.code === 'COMMENTS_DISABLED' ? 'DISABLED' : 'ERROR') : 'ERROR'; item.commentError = normalized.code || normalized.message;
+          const normalized = apiError(error);
+          // Vídeo recém-publicado pode ainda não estar liberado para comentários:
+          // trata COMMENTS_DISABLED como transitório dentro da janela de graça.
+          const grace = normalized.code === 'COMMENTS_DISABLED' && publishedWithinGrace(item);
+          item.commentStatus = normalized.permanent && !grace ? (normalized.code === 'COMMENTS_DISABLED' ? 'DISABLED' : 'ERROR') : 'ERROR'; item.commentError = normalized.code || normalized.message;
         }
         await saveItems(items);
       }
@@ -247,9 +301,9 @@ module.exports = function createInventoryRouter({ oauthClient, hasGoogleConfig }
     }
     await processComments();
   }
-  function startScheduler() { if (schedulerTimer) return; console.log('[scheduler] started'); schedulerTimer = setInterval(() => processPendingSchedules().catch(() => {}), 60000); schedulerTimer.unref(); processPendingSchedules().catch(() => {}); }
+  function startScheduler() { if (schedulerTimer) return; console.log('[scheduler] started'); try { const bootItems = readItems(); if (reevaluateComments(bootItems)) { saveItems(bootItems); console.log('[comment] reavaliou comentários desativados no boot'); } } catch (error) { console.error('[scheduler] erro ao reavaliar comentários no boot:', error.message); } schedulerTimer = setInterval(() => processPendingSchedules().catch(() => {}), 60000); schedulerTimer.unref(); processPendingSchedules().catch(() => {}); }
   router.get('/comments/settings', (_, res) => res.json(readSettings()));
-  router.put('/comments/settings', (req, res, next) => { try { const current = readSettings(); const nextValue = { ...current, enabled: req.body.enabled !== undefined ? Boolean(req.body.enabled) : current.enabled, text: req.body.text !== undefined ? String(req.body.text || '').slice(0, 10000) : current.text, categories: req.body.categories || current.categories || {}, channels: req.body.channels || current.channels || {} }; saveSettings(nextValue); res.json(nextValue); } catch (error) { next(error); } });
+  router.put('/comments/settings', (req, res, next) => { try { const current = readSettings(); const nextValue = { ...current, enabled: req.body.enabled !== undefined ? Boolean(req.body.enabled) : current.enabled, text: req.body.text !== undefined ? String(req.body.text || '').slice(0, 10000) : current.text, categories: req.body.categories || current.categories || {}, channels: req.body.channels || current.channels || {} }; saveSettings(nextValue); const items = readItems(); if (reevaluateComments(items)) { saveItems(items); console.log('[comment] reavaliou comentários após salvar configurações'); } res.json(nextValue); } catch (error) { next(error); } });
   router.post('/:id([0-9a-fA-F-]+)/comment', async (req, res, next) => { try { const items = readItems(); const item = findVideoById(items, req.params.id); assertOwned(req.session.userId, item); if (!item.youtubeVideoId) throw Object.assign(new Error('O vÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â­deo ainda nÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£o possui youtubeVideoId.'), { status: 409 }); if (item.commentStatus === 'POSTED' || item.youtubeCommentId) return res.json(clientItem(item)); item.autoCommentEnabled = true; item.commentText = String(req.body.text || item.commentText || readSettings().text || '').trim(); item.commentStatus = 'PENDING'; await saveItems(items); await processComments(); res.json(clientItem(findVideoById(readItems(), item.id))); } catch (error) { next(error); } });
 
   function localSlotIso(date, slot) { return new Date(`${date}T${slot}:00-03:00`).toISOString(); }
@@ -431,7 +485,7 @@ module.exports = function createInventoryRouter({ oauthClient, hasGoogleConfig }
     const accountFilter = req.query.accountId === '__unassigned__' ? '__unassigned__' : String(req.query.accountId || '');
     const allItems = readItems(); let changed = false;
     allItems.forEach(item => { if (!item.contentType) { item.contentType = 'LONG'; changed = true; } });
-    allItems.forEach(item => { if (item.status === 'SCHEDULED' && item.scheduledAt && new Date(item.scheduledAt).getTime() <= Date.now()) { item.status = 'PUBLISHED'; changed = true; } });
+    allItems.forEach(item => { if (item.status === 'SCHEDULED' && item.scheduledAt && new Date(item.scheduledAt).getTime() <= Date.now()) { item.status = 'PUBLISHED'; item.publishedAt = item.publishedAt || new Date().toISOString(); changed = true; } });
     if (changed) await saveItems(allItems);
     const items = scopedByUser(allItems, req.session.userId).filter(v => (!category || v.category === category) && (!contentType || (v.contentType || 'LONG') === contentType) && (!status || v.status === status) && (!accountFilter || (accountFilter === '__unassigned__' ? !v.accountId : v.accountId === accountFilter))).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     res.json(items.map(clientItem));
