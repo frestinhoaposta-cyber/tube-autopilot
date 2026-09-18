@@ -49,6 +49,14 @@ const categoriesConfig = {
     emojis: ['🌲','🔥','🧠','🏆'], hooks: ['NOVO SCRIPT','MELHOR SCRIPT','NOVO HACK'], terms: ['99 NOITES NA FLORESTA','99 NIGHTS ROBLOX'], benefits: ['SEM KEY','MOBILE E PC','FUNCIONANDO 2026'], complements: ['2026','AGORA'],
     longTitleTemplates: ['🌲 NOVO SCRIPT 99 NOITES NA FLORESTA 2026','🏆 MELHOR SCRIPT 99 NOITES FUNCIONANDO'], shortTitleTemplates: ['🌲 SCRIPT 99 NOITES NA FLORESTA #shorts','🔥 NOVO HACK 99 NOITES 2026 #shorts'],
     autoComment: { enabled: true, text: '🌲 Esse script de 99 Noites é incrível! Testem e compartilhem sua experiência nos comentários!' }
+  },
+  stealEgg: {
+    id: 'stealEgg', name: 'Steal a Egg', emoji: '🥚', youtubeCategoryId: '20', youtubeCategoryName: 'Jogos',
+    description: '🥚 STEAL A EGG! Veja as melhores estratégias, scripts e novidades do jogo Roblox Steal a Egg para roubar todos os ovos.',
+    tags: ['steal a egg','roblox','script steal a egg','hack roblox','script 2026','mobile','pc','sem key','auto farm','egg','egg raro','spawn egg','link direto','steal a egg script'],
+    emojis: ['🥚','🔥','⚡','🏆'], hooks: ['NOVO SCRIPT','MELHOR SCRIPT','NOVO HACK','SCRIPT FUNCIONANDO'], terms: ['STEAL A EGG','STEAL A EGG SCRIPT','STEAL A EGG ROBLOX'], benefits: ['SEM KEY','MOBILE E PC','AUTO FARM','AUTO COLLECT','TODOS OS OVOS','SPAWN EGG','LINK DIRETO','GRÁTIS','ATUALIZADO'], complements: ['2026','AGORA','ROBLOX 2026','GRÁTIS 2026'],
+    longTitleTemplates: ['🥚 NOVO SCRIPT STEAL A EGG 2026','🔥 MELHOR HACK STEAL A EGG FUNCIONANDO','⚡ SCRIPT STEAL A EGG AUTO FARM 2026'], shortTitleTemplates: ['🥚 SCRIPT STEAL A EGG #shorts','🔥 NOVO HACK STEAL A EGG 2026 #shorts'],
+    autoComment: { enabled: true, text: '🥚 Esse script de Steal a Egg funciona muito bem! Testem e me digam nos comentários quantos ovos conseguiram roubar!' }
   }
 };
 
