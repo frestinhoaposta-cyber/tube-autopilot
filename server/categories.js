@@ -17,6 +17,16 @@ working scripts, hydrogen scripts, steal a brain rot hydrogen, fluxus executor, 
 
 const MAX_SHORTS_PER_DAY = 10;
 const SHORTS_DAILY_SLOTS = ['08:00', '09:30', '10:45', '12:00', '13:30', '15:00', '16:30', '18:00', '19:30', '21:00'];
+const TITLE_HASHTAGS = ' #roblox #script';
+
+function appendTitleHashtags(title) {
+  const base = String(title || '').replace(/\s+/g, ' ').trim();
+  const lower = base.toLowerCase();
+  if (lower.includes('#roblox') && lower.includes('#script')) return base.slice(0, 100);
+  const maxBase = 100 - TITLE_HASHTAGS.length;
+  const sliced = base.length > maxBase ? base.slice(0, maxBase).replace(/\s+$/, '') : base;
+  return (sliced + TITLE_HASHTAGS).slice(0, 100);
+}
 
 const categoriesConfig = {
   brainrot: {
@@ -88,7 +98,7 @@ function generateTitle(categoryId, seed, usedTitles = []) {
     let term = pick(config.terms, 3);
     if (hook.includes('SCRIPT') && term.startsWith('SCRIPT ')) term = term.slice(7);
     if (hook.includes('SCRIPT') && term.endsWith(' SCRIPT')) term = term.slice(0, -7);
-    const title = templates[(value + attempt) % templates.length](emoji, hook, term, pick(config.benefits, 4), pick(config.complements, 5)).replace(/\s+/g, ' ').trim().slice(0, 100);
+    const title = appendTitleHashtags(templates[(value + attempt) % templates.length](emoji, hook, term, pick(config.benefits, 4), pick(config.complements, 5)));
     if (!used.has(normalizeTitle(title))) return title;
   }
   throw new Error('Não foi possível criar outro título único para este estoque.');
@@ -106,7 +116,7 @@ function generateShortTitle(categoryId, seed, usedTitles = []) {
       const benefit = config.benefits[hash(`${seed}:benefit:${attempt}`) % config.benefits.length];
       base = `${template.replace(/#shorts/ig, '').trim()} ${benefit} #shorts ${attempt + 1}`;
     }
-    const title = String(base).replace(/\s+/g, ' ').trim().slice(0, 100);
+    const title = appendTitleHashtags(String(base).replace(/#roblox|#script/gi, '').replace(/\s+/g, ' ').trim());
     if (!used.has(normalizeTitle(title))) return title;
   }
   throw new Error('Não foi possível criar outro título Short único para esta categoria.');
@@ -116,12 +126,27 @@ function publicCategories() {
   return Object.values(categoriesConfig).map(({ emojis, hooks, terms, benefits, complements, ...category }) => category);
 }
 
-function buildYoutubeSnippet(metadata) {
+function buildYoutubeSnippet(metadata, options = {}) {
+  // O YouTube recusa o upload quando o total de caracteres das tags passa de 500.
+  const maxTagsChars = options.maxTagsChars || 480;
+  const maxTitleChars = options.maxTitleChars || 100;
+  const maxDescriptionChars = options.maxDescriptionChars || 5000;
+  const rawTags = Array.isArray(metadata.tags) ? metadata.tags : String(metadata.tags || '').split(',').map(v => v.trim()).filter(Boolean);
+  const tags = [];
+  let charCount = 0;
+  for (const tag of rawTags) {
+    const clean = String(tag || '').trim();
+    if (!clean || tags.length >= 60) break;
+    const separator = tags.length ? 1 : 0;
+    if (charCount + clean.length + separator > maxTagsChars) break;
+    tags.push(clean); charCount += clean.length + separator;
+  }
+  const requestedCategoryId = String(metadata.youtubeCategoryId || '20');
   return {
-    title: String(metadata.title || '').trim().slice(0, 100),
-    description: String(metadata.description || '').slice(0, 5000),
-    tags: Array.isArray(metadata.tags) ? metadata.tags.slice(0, 60) : String(metadata.tags || '').split(',').map(v => v.trim()).filter(Boolean).slice(0, 60),
-    categoryId: String(metadata.youtubeCategoryId || '20')
+    title: String(metadata.title || '').trim().slice(0, maxTitleChars),
+    description: String(metadata.description || '').slice(0, maxDescriptionChars),
+    tags,
+    categoryId: /^\d+$/.test(requestedCategoryId) ? requestedCategoryId : '20'
   };
 }
 
