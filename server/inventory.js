@@ -337,17 +337,26 @@ module.exports = function createInventoryRouter({ oauthClient, hasGoogleConfig }
     const value = new Date(new Date(item.scheduledAt).getTime() - 3 * 60 * 60000);
     return `${value.toISOString().slice(0, 10)}|${value.toISOString().slice(11, 16)}`;
   }
-  function getNextAvailableSlots(items, count, startDate, contentType = 'SHORT', accountId = null) {
+  function normalizePerDay(value) {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return MAX_SHORTS_PER_DAY;
+    return Math.max(1, Math.min(MAX_SHORTS_PER_DAY, Math.trunc(parsed)));
+  }
+  function getNextAvailableSlots(items, count, startDate, contentType = 'SHORT', accountId = null, perDay = MAX_SHORTS_PER_DAY) {
+    const limit = normalizePerDay(perDay);
     const occupied = new Set(items.filter(v => (v.contentType || 'LONG') === contentType && (!accountId || v.accountId === accountId) && ['SCHEDULED', 'UPLOADING', 'PUBLISHED'].includes(v.status)).map(itemSlot).filter(Boolean));
     const result = []; let date = startDate || new Date(Date.now() - 3 * 60 * 60000).toISOString().slice(0, 10);
     for (let day = 0; result.length < count && day < 366; day += 1) {
       for (const slot of SHORTS_DAILY_SLOTS) {
+        if (result.length === count) break;
+        const usedToday = SHORTS_DAILY_SLOTS.reduce((total, dailySlot) => total + (occupied.has(`${date}|${dailySlot}`) ? 1 : 0), 0);
+        if (usedToday >= limit) break;
         const key = `${date}|${slot}`; const candidate = new Date(`${date}T${slot}:00-03:00`);
-        if (!occupied.has(key) && candidate.getTime() > Date.now() + 60000) { occupied.add(key); result.push({ scheduledDate: date, scheduledSlot: slot, scheduledAt: candidate.toISOString() }); if (result.length === count) break; }
+        if (!occupied.has(key) && candidate.getTime() > Date.now() + 60000) { occupied.add(key); result.push({ scheduledDate: date, scheduledSlot: slot, scheduledAt: candidate.toISOString() }); }
       }
       date = dateAfter(date, 1);
     }
-    if (result.length < count) throw Object.assign(new Error('Não foi possível encontrar slots de Shorts disponíveis nos próximos 12 meses.'), { status: 409 });
+    if (result.length < count) throw Object.assign(new Error('Não foi possível encontrar horários disponíveis nos próximos 12 meses com esse limite por dia.'), { status: 409 });
     return result;
   }
   function getNextAvailableShortSlots(items, count, startDate) { return getNextAvailableSlots(items, count, startDate, 'SHORT'); }
@@ -446,15 +455,16 @@ module.exports = function createInventoryRouter({ oauthClient, hasGoogleConfig }
       const items = readItems(); const selected = scopedByUser(ids.map(id => findVideoById(items, id)), req.session.userId);
       if (selected.some(v => (v.contentType || 'LONG') !== 'LONG')) throw Object.assign(new Error('Este agendamento aceita somente vídeos LONG da Biblioteca.'), { status: 400 });
       const accountId = selected[0]?.accountId || null; if (selected.some(v => (v.accountId || null) !== accountId)) throw Object.assign(new Error('Agende somente vídeos do mesmo canal por vez.'), { status: 400 });
-      const slots = await withShortsScheduleLock(async () => getNextAvailableSlots(items, selected.length, req.body.startDate || null, 'LONG', accountId));
-      res.json({ items: selected.map((item, index) => ({ videoId: item.id, title: item.title, scheduledAt: slots[index].scheduledAt, scheduledDate: slots[index].scheduledDate, scheduledSlot: slots[index].scheduledSlot })), maxPerDay: MAX_SHORTS_PER_DAY, slots: SHORTS_DAILY_SLOTS });
+      const perDay = normalizePerDay(req.body.perDay);
+      const slots = await withShortsScheduleLock(async () => getNextAvailableSlots(items, selected.length, req.body.startDate || null, 'LONG', accountId, perDay));
+      res.json({ items: selected.map((item, index) => ({ videoId: item.id, title: item.title, scheduledAt: slots[index].scheduledAt, scheduledDate: slots[index].scheduledDate, scheduledSlot: slots[index].scheduledSlot })), maxPerDay: MAX_SHORTS_PER_DAY, perDay, slots: SHORTS_DAILY_SLOTS });
     } catch (error) { next(error); }
   });
   router.get('/long-schedule/capacity', (req, res, next) => {
     try {
-      const startDate = req.query.startDate || new Date(Date.now() - 3 * 60 * 60000).toISOString().slice(0, 10); const items = scopedByUser(readItems(), req.session.userId); const accountId = String(req.query.accountId || '');
-      const days = [0, 1].map(offset => { const date = dateAfter(startDate, offset); const used = new Set(items.filter(v => (v.contentType || 'LONG') === 'LONG' && (!accountId || (accountId === '__unassigned__' ? !v.accountId : v.accountId === accountId)) && ['SCHEDULED', 'UPLOADING', 'PUBLISHED'].includes(v.status) && itemSlot(v)?.startsWith(`${date}|`)).map(itemSlot)); return { date, occupied: used.size, available: Math.max(0, MAX_SHORTS_PER_DAY - used.size), full: used.size >= MAX_SHORTS_PER_DAY }; });
-      res.json({ maxPerDay: MAX_SHORTS_PER_DAY, slots: SHORTS_DAILY_SLOTS, days });
+      const startDate = req.query.startDate || new Date(Date.now() - 3 * 60 * 60000).toISOString().slice(0, 10); const items = scopedByUser(readItems(), req.session.userId); const accountId = String(req.query.accountId || ''); const perDay = normalizePerDay(req.query.perDay);
+      const days = [0, 1].map(offset => { const date = dateAfter(startDate, offset); const used = new Set(items.filter(v => (v.contentType || 'LONG') === 'LONG' && (!accountId || (accountId === '__unassigned__' ? !v.accountId : v.accountId === accountId)) && ['SCHEDULED', 'UPLOADING', 'PUBLISHED'].includes(v.status) && itemSlot(v)?.startsWith(`${date}|`)).map(itemSlot)); return { date, occupied: used.size, available: Math.max(0, perDay - used.size), full: used.size >= perDay }; });
+      res.json({ maxPerDay: MAX_SHORTS_PER_DAY, perDay, slots: SHORTS_DAILY_SLOTS, days });
     } catch (error) { next(error); }
   });
   router.post('/long-schedule/confirm', async (req, res, next) => {
@@ -465,11 +475,11 @@ module.exports = function createInventoryRouter({ oauthClient, hasGoogleConfig }
         const items = readItems(); const selected = ids.map(id => findVideoById(items, id)).filter(v => v.userId === req.session.userId);
         if (selected.some(v => (v.contentType || 'LONG') !== 'LONG')) throw Object.assign(new Error('Este agendamento aceita somente vídeos LONG da Biblioteca.'), { status: 400 });
         const accountId = selected[0]?.accountId || null; if (selected.some(v => (v.accountId || null) !== accountId)) throw Object.assign(new Error('Agende somente vídeos do mesmo canal por vez.'), { status: 400 });
-        const slots = getNextAvailableSlots(items, selected.length, req.body.startDate || null, 'LONG', accountId); const output = [];
+        const slots = getNextAvailableSlots(items, selected.length, req.body.startDate || null, 'LONG', accountId, normalizePerDay(req.body.perDay)); const output = [];
         for (let index = 0; index < selected.length; index += 1) { const item = selected[index]; const slot = slots[index]; item.scheduledDate = slot.scheduledDate; item.scheduledSlot = slot.scheduledSlot; try { output.push({ ok: true, item: clientItem(await uploadOne(req, item, slot.scheduledAt)) }); } catch (error) { output.push({ ok: false, videoId: item.id, scheduledAt: slot.scheduledAt, error: userError(error) }); } }
         return output;
       });
-      res.json({ items: results, maxPerDay: MAX_SHORTS_PER_DAY });
+      res.json({ items: results, maxPerDay: MAX_SHORTS_PER_DAY, perDay: normalizePerDay(req.body.perDay) });
     } catch (error) { next(error); }
   });
   router.post('/schedule/preview', async (req, res, next) => {
@@ -477,13 +487,14 @@ module.exports = function createInventoryRouter({ oauthClient, hasGoogleConfig }
       const ids = Array.isArray(req.body.videoIds) ? req.body.videoIds : []; if (!ids.length) throw Object.assign(new Error('Selecione pelo menos um Short.'), { status: 400 });
         const items = readItems(); const selected = ids.map(id => findVideoById(items, id)).filter(v => v.userId === req.session.userId); if (selected.some(v => v.contentType !== 'SHORT')) throw Object.assign(new Error('O agendamento automático aceita somente vídeos marcados como SHORT.'), { status: 400 });
       const accountId = selected[0]?.accountId || null; if (!accountId || selected.some(v => v.accountId !== accountId)) throw Object.assign(new Error('Atribua os Shorts ao mesmo canal antes de agendar.'), { status: 400 });
-      const slots = await withShortsScheduleLock(async () => getNextAvailableSlots(items, selected.length, req.body.startDate || null, 'SHORT', accountId));
-      res.json({ items: selected.map((item, index) => ({ videoId: item.id, title: item.title, scheduledAt: slots[index].scheduledAt, scheduledDate: slots[index].scheduledDate, scheduledSlot: slots[index].scheduledSlot })), maxPerDay: MAX_SHORTS_PER_DAY, slots: SHORTS_DAILY_SLOTS });
+      const perDay = normalizePerDay(req.body.perDay);
+      const slots = await withShortsScheduleLock(async () => getNextAvailableSlots(items, selected.length, req.body.startDate || null, 'SHORT', accountId, perDay));
+      res.json({ items: selected.map((item, index) => ({ videoId: item.id, title: item.title, scheduledAt: slots[index].scheduledAt, scheduledDate: slots[index].scheduledDate, scheduledSlot: slots[index].scheduledSlot })), maxPerDay: MAX_SHORTS_PER_DAY, perDay, slots: SHORTS_DAILY_SLOTS });
     } catch (error) { next(error); }
   });
   router.get('/schedule/capacity', (req, res, next) => {
     try {
-      const startDate = req.query.startDate || new Date(Date.now() - 3 * 60 * 60000).toISOString().slice(0, 10); const items = scopedByUser(readItems(), req.session.userId); const accountId = String(req.query.accountId || ''); const days = [0, 1].map(offset => { const date = dateAfter(startDate, offset); const used = new Set(items.filter(v => v.contentType === 'SHORT' && (!accountId || (accountId === '__unassigned__' ? !v.accountId : v.accountId === accountId)) && ['SCHEDULED', 'UPLOADING', 'PUBLISHED'].includes(v.status) && itemSlot(v)?.startsWith(`${date}|`)).map(itemSlot)); return { date, occupied: used.size, available: Math.max(0, MAX_SHORTS_PER_DAY - used.size), full: used.size >= MAX_SHORTS_PER_DAY }; }); res.json({ maxPerDay: MAX_SHORTS_PER_DAY, slots: SHORTS_DAILY_SLOTS, days });
+      const startDate = req.query.startDate || new Date(Date.now() - 3 * 60 * 60000).toISOString().slice(0, 10); const items = scopedByUser(readItems(), req.session.userId); const accountId = String(req.query.accountId || ''); const perDay = normalizePerDay(req.query.perDay); const days = [0, 1].map(offset => { const date = dateAfter(startDate, offset); const used = new Set(items.filter(v => v.contentType === 'SHORT' && (!accountId || (accountId === '__unassigned__' ? !v.accountId : v.accountId === accountId)) && ['SCHEDULED', 'UPLOADING', 'PUBLISHED'].includes(v.status) && itemSlot(v)?.startsWith(`${date}|`)).map(itemSlot)); return { date, occupied: used.size, available: Math.max(0, perDay - used.size), full: used.size >= perDay }; }); res.json({ maxPerDay: MAX_SHORTS_PER_DAY, perDay, slots: SHORTS_DAILY_SLOTS, days });
     } catch (error) { next(error); }
   });
   router.post('/schedule/confirm', async (req, res, next) => {
@@ -491,11 +502,11 @@ module.exports = function createInventoryRouter({ oauthClient, hasGoogleConfig }
       const ids = Array.isArray(req.body.videoIds) ? req.body.videoIds : []; if (!ids.length) throw Object.assign(new Error('Selecione pelo menos um Short.'), { status: 400 });
       const results = await withShortsScheduleLock(async () => {
       const items = readItems(); const selected = scopedByUser(ids.map(id => findVideoById(items, id)), req.session.userId); if (selected.some(v => v.contentType !== 'SHORT')) throw Object.assign(new Error('O agendamento automático aceita somente vídeos marcados como SHORT.'), { status: 400 });
-        const accountId = selected[0]?.accountId || null; if (!accountId || selected.some(v => v.accountId !== accountId)) throw Object.assign(new Error('Atribua os Shorts ao mesmo canal antes de agendar.'), { status: 400 }); const slots = getNextAvailableSlots(items, selected.length, req.body.startDate || null, 'SHORT', accountId); const output = [];
+        const accountId = selected[0]?.accountId || null; if (!accountId || selected.some(v => v.accountId !== accountId)) throw Object.assign(new Error('Atribua os Shorts ao mesmo canal antes de agendar.'), { status: 400 }); const slots = getNextAvailableSlots(items, selected.length, req.body.startDate || null, 'SHORT', accountId, normalizePerDay(req.body.perDay)); const output = [];
         for (let index = 0; index < selected.length; index += 1) { const item = selected[index]; const slot = slots[index]; item.scheduledDate = slot.scheduledDate; item.scheduledSlot = slot.scheduledSlot; try { output.push({ ok: true, item: clientItem(await uploadOne(req, item, slot.scheduledAt)) }); } catch (error) { output.push({ ok: false, videoId: item.id, scheduledAt: slot.scheduledAt, error: userError(error) }); } }
         return output;
       });
-      res.json({ items: results, adjusted: results.some(v => v.ok && v.item?.scheduledAt !== req.body.previewScheduledAt), maxPerDay: MAX_SHORTS_PER_DAY });
+      res.json({ items: results, adjusted: results.some(v => v.ok && v.item?.scheduledAt !== req.body.previewScheduledAt), maxPerDay: MAX_SHORTS_PER_DAY, perDay: normalizePerDay(req.body.perDay) });
     } catch (error) { next(error); }
   });
   router.get('/dashboard', (req, res, next) => { try { const items = readItems().filter(v => v.userId === req.session.userId); const count = (type, status, category) => items.filter(v => (!type || (v.contentType || 'LONG') === type) && (!status || v.status === status) && (!category || v.category === category)).length; const categories = publicCategories().map(c => ({ id: c.id, name: c.name, emoji: c.emoji, long: count('LONG', 'AVAILABLE', c.id), short: count('SHORT', 'AVAILABLE', c.id), scheduled: count(null, 'SCHEDULED', c.id), published: count(null, 'PUBLISHED', c.id) })); const upcoming = items.filter(v => v.status === 'SCHEDULED' && v.scheduledAt).sort((a,b) => new Date(a.scheduledAt)-new Date(b.scheduledAt)).slice(0,10).map(clientItem); res.json({ stats: { longAvailable: count('LONG','AVAILABLE'), shortAvailable: count('SHORT','AVAILABLE'), scheduled: count(null,'SCHEDULED'), uploading: count(null,'UPLOADING'), published: count(null,'PUBLISHED'), errors: count(null,'ERROR') }, categories, upcoming }); } catch (error) { next(error); } });
@@ -532,7 +543,6 @@ module.exports = function createInventoryRouter({ oauthClient, hasGoogleConfig }
           if (existingNames.has(filenameKey)) { await fs.promises.unlink(file.path).catch(() => {}); return { skipped: true, reason: "DUPLICATE_FILENAME", filename: file.originalname }; }
           const fileHash = crypto.createHash("sha256").update(await fs.promises.readFile(file.path)).digest("hex");
           const duplicateKey = fileHash + ":" + contentType + ":" + accountKey;
-          console.log("[duplicate-check] filename=" + file.originalname + " requestedType=" + contentType + " duplicate=" + existingKeys.has(duplicateKey));
           if (existingKeys.has(duplicateKey)) { await fs.promises.unlink(file.path).catch(() => {}); return { skipped: true, reason: "DUPLICATE_VIDEO", filename: file.originalname }; }
           const sharedSource = current.find(v => v.fileHash === fileHash && normalizeContentType(v.contentType) === contentType && v.filePath && fs.existsSync(physicalPath(v)));
           if (sharedSource) await fs.promises.unlink(file.path).catch(() => {});
@@ -598,6 +608,61 @@ module.exports = function createInventoryRouter({ oauthClient, hasGoogleConfig }
       if (selected.some(item => items.some(other => !ids.has(other.id) && other.accountId === accountId && other.contentType === item.contentType && other.fileHash && other.fileHash === item.fileHash))) throw Object.assign(new Error('Este canal já possui um dos vídeos selecionados.'), { status: 409 });
       selected.forEach(item => { item.userId = req.session.userId; item.accountId = accountId; item.channelId = targetAccount.channelId; item.error = null; if (item.status === 'ERROR') item.status = 'AVAILABLE'; });
       await saveItems(items); res.json({ updated: selected.length, items: selected.map(clientItem) });
+    } catch (error) { next(error); }
+  });
+  // Copia os vídeos para outro canal mantendo o registro original onde está.
+  // A cópia compartilha o mesmo arquivo físico (sem duplicar disco) e zera todo o
+  // histórico de envio/agendamento/comentário para poder ser publicada no destino.
+  router.post('/actions/copy-to-channel', async (req, res, next) => {
+    try {
+      const ids = [...new Set(Array.isArray(req.body.ids) ? req.body.ids.map(String) : [])]; const accountId = String(req.body.accountId || '');
+      if (!ids.length) throw Object.assign(new Error('Selecione pelo menos um vídeo.'), { status: 400 });
+      const targetAccount = resolveOwnedAccount(req.session.userId, accountId);
+      if (getAccountAuthStatus(accountId) !== 'CONNECTED') throw Object.assign(new Error('Selecione um canal conectado para receber as cópias.'), { status: 401 });
+      const items = readItems(); const allById = items.filter(item => ids.includes(item.id));
+      if (allById.some(item => item.userId && item.userId !== req.session.userId)) { const error = new Error('Vídeo não encontrado.'); error.status = 404; error.code = 'VIDEO_NOT_FOUND'; throw error; }
+      const sources = allById.filter(item => (item.userId === req.session.userId || (!item.userId && !item.accountId)) && item.status !== 'DELETED');
+      if (!sources.length) throw Object.assign(new Error('Nenhum vídeo válido foi selecionado.'), { status: 400 });
+      const created = []; const skipped = [];
+      for (const source of sources) {
+        const type = source.contentType || 'LONG';
+        const sourcePath = physicalPath(source);
+        if (!fs.existsSync(sourcePath)) { skipped.push({ videoId: source.id, title: source.title, reason: 'VIDEO_FILE_MISSING' }); continue; }
+        if (!source.fileHash) source.fileHash = crypto.createHash('sha256').update(fs.readFileSync(sourcePath)).digest('hex');
+        const alreadyThere = source.accountId === accountId || items.some(other => other.id !== source.id && other.status !== 'DELETED' && other.accountId === accountId && (other.contentType || 'LONG') === type && other.fileHash === source.fileHash);
+        if (alreadyThere) { skipped.push({ videoId: source.id, title: source.title, reason: 'ALREADY_IN_CHANNEL' }); continue; }
+        const copy = {
+          ...source,
+          id: crypto.randomUUID(),
+          sourceInventoryId: source.id,
+          userId: req.session.userId,
+          accountId,
+          channelId: targetAccount.channelId,
+          status: 'AVAILABLE',
+          error: null,
+          createdAt: new Date().toISOString(),
+          scheduledAt: null,
+          scheduledDate: null,
+          scheduledSlot: null,
+          uploadedAt: null,
+          publishedAt: null,
+          youtubeVideoId: null,
+          attemptCount: 0,
+          lastAttemptAt: null,
+          autoCommentEnabled: false,
+          commentText: '',
+          commentStatus: null,
+          commentAttemptCount: 0,
+          lastCommentAttemptAt: null,
+          commentError: null,
+          commentPostedAt: null,
+          youtubeCommentId: null
+        };
+        items.push(copy);
+        created.push(copy);
+      }
+      await saveItems(items);
+      res.status(201).json({ created: created.map(clientItem), skipped });
     } catch (error) { next(error); }
   });
   router.post('/actions/delete-legacy-unused', async (req, res, next) => {

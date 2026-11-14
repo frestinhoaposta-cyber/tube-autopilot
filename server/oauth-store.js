@@ -174,7 +174,13 @@ async function getAuthenticatedYouTubeClient(account) {
   try {
     await client.getAccessToken(); await assertClientChannel(client, decrypted); markAccountStatus(account.accountId, 'CONNECTED'); return client;
   } catch (error) {
-    if (error?.response?.status === 401 || error?.code === 401 || error?.code === 'invalid_grant') markAccountStatus(account.accountId, 'RECONNECT_REQUIRED');
+    // Google revoga refresh token expirado/negado como invalid_grant (HTTP 400),
+    // não como 401. Detectar por mensagem/corpo garante que a conta seja marcada
+    // para reconexão e o worker pare de tentar repetidamente.
+    const isInvalidGrant = String(error?.message || '').includes('invalid_grant')
+      || String(error?.response?.data?.error || '').includes('invalid_grant')
+      || error?.code === 'invalid_grant';
+    if (error?.response?.status === 401 || error?.code === 401 || isInvalidGrant) markAccountStatus(account.accountId, 'RECONNECT_REQUIRED');
     throw error;
   }
 }

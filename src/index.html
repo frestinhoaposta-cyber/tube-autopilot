@@ -177,9 +177,9 @@
           <div class="progress"><i id="stockUploadProgress" style="width:0%"></i></div>
         </div>
         <div class="stock-stats"><article><strong id="stockAvailable">0</strong><span>Disponíveis</span></article><article><strong id="stockScheduled">0</strong><span>Agendados</span></article><article><strong id="stockPublished">0</strong><span>Publicados</span></article><article><strong id="stockErrors">0</strong><span>Erros</span></article></div>
-        <div id="stockBulkBar" class="panel stock-bulk-bar hidden"><strong><span id="stockSelectedCount">0</span> selecionados</strong><select id="stockAssignAccount"></select><button id="stockAssignBtn" class="secondary">Mover para o canal</button><button id="bulkRegenerateBtn" class="secondary">Gerar novos títulos</button><button id="bulkScheduleBtn" class="secondary">Agendar selecionados</button><button id="bulkSendBtn" class="primary">Enviar selecionados</button><button id="bulkDeleteBtn" class="danger">Excluir selecionados</button></div>
+        <div id="stockBulkBar" class="panel stock-bulk-bar hidden"><strong><span id="stockSelectedCount">0</span> selecionados</strong><select id="stockAssignAccount" title="Canal de destino"></select><button id="stockCopyBtn" class="secondary">Copiar p/ o canal</button><button id="stockAssignBtn" class="secondary">Mover para o canal</button><button id="bulkRegenerateBtn" class="secondary">Gerar novos títulos</button><button id="bulkScheduleBtn" class="secondary">Agendar selecionados</button><button id="bulkSendBtn" class="primary">Enviar selecionados</button><button id="bulkDeleteBtn" class="danger">Excluir selecionados</button></div>
         <div class="panel stock-list-panel"><div class="panel-head"><label class="check"><input id="stockSelectAll" type="checkbox"><span>Selecionar todos</span></label><div class="short-tabs"><button class="secondary active" data-stock-status="AVAILABLE" id="stockStatusAvailable">Disponíveis</button><button class="secondary" data-stock-status="SCHEDULED">Agendados</button><button class="secondary" data-stock-status="PUBLISHED">Publicados</button><button class="secondary" data-stock-status="ERROR">Erros</button></div><button id="refreshStockBtn" class="text-btn">Atualizar</button></div><div id="stockList" class="stock-list"><div class="empty"><p>Carregando estoque...</p></div></div></div>
-        <div id="autoSchedulePanel" class="panel auto-schedule shorts-schedule-panel hidden"><div class="panel-head"><div><h2>📅 Agendamento automático</h2><p>O sistema procura os próximos horários livres e distribui até 10 vídeos por dia.</p></div><button id="closeAutoSchedule" class="text-btn">Fechar</button></div><div class="shorts-capacity-header"><label>Começar em<input id="autoDate" type="date"></label><div id="longScheduleCapacity" class="shorts-capacity"></div></div><div class="shorts-schedule-summary"><span>Selecionados</span><strong id="autoQuantity">0</strong><span>Limite diário</span><strong>10</strong></div><button id="previewScheduleBtn" class="secondary full">Gerar prévia dos horários</button><div id="schedulePreview" class="schedule-preview"></div><div id="longScheduleConfirmBox" class="shorts-confirm-box hidden"><div><strong>Confira a prévia antes de confirmar</strong><small>Os vídeos serão enviados ao YouTube com a publicação programada.</small></div><button id="confirmScheduleBtn" class="primary">Confirmar agendamento</button></div></div>
+        <div id="autoSchedulePanel" class="panel auto-schedule shorts-schedule-panel hidden"><div class="panel-head"><div><h2>📅 Agendamento automático</h2><p>O sistema procura os próximos horários livres e distribui os vídeos respeitando o limite de vídeos por dia.</p></div><button id="closeAutoSchedule" class="text-btn">Fechar</button></div><div class="shorts-capacity-header"><label>Começar em<input id="autoDate" type="date"></label><label>Vídeos por dia<select id="autoPerDay"><option value="1" selected>1 por dia</option><option value="2">2 por dia</option><option value="3">3 por dia</option><option value="4">4 por dia</option><option value="5">5 por dia</option><option value="6">6 por dia</option><option value="7">7 por dia</option><option value="8">8 por dia</option><option value="9">9 por dia</option><option value="10">10 por dia</option></select></label><div id="longScheduleCapacity" class="shorts-capacity"></div></div><div class="shorts-schedule-summary"><span>Selecionados</span><strong id="autoQuantity">0</strong><span>Limite diário</span><strong id="autoPerDayLabel">1</strong></div><button id="previewScheduleBtn" class="secondary full">Gerar prévia dos horários</button><div id="schedulePreview" class="schedule-preview"></div><div id="longScheduleConfirmBox" class="shorts-confirm-box hidden"><div><strong>Confira a prévia antes de confirmar</strong><small>Os vídeos serão enviados ao YouTube com a publicação programada.</small></div><button id="confirmScheduleBtn" class="primary">Confirmar agendamento</button></div></div>
         <div class="section-title"><span class="pill">CONTEÚDO</span><h1>Biblioteca</h1><p>Visualize seus vídeos preparados e publicados.</p></div>
         <div class="panel"><div class="empty"><div>▦</div><h3>Sua biblioteca ficará aqui</h3><p>Os vídeos gerados e publicados aparecerão nesta área.</p><button class="primary" data-go="generator">Criar primeiro vídeo</button></div></div>
       </section>
@@ -196,7 +196,7 @@
         <div class="shorts-mode-switch panel">
           <div>
             <strong>Como você quer enviar?</strong>
-            <small>Use envio imediato ou distribua automaticamente em até 10 horários por dia.</small>
+            <small>Use envio imediato ou distribua automaticamente nos próximos dias e horários livres.</small>
           </div>
           <div class="shorts-mode-buttons">
             <button id="shortModeInstant" class="secondary active" type="button">⚡ Envio imediato</button>
@@ -315,7 +315,7 @@
               <div class="panel-head">
                 <div>
                   <h2>📅 Agendamento automático</h2>
-                  <p>O sistema procura os próximos horários livres e respeita o limite de 10 Shorts por dia.</p>
+                  <p>O sistema procura os próximos horários livres e respeita o limite de vídeos por dia.</p>
                 </div>
                 <button id="shortCloseSchedule" class="text-btn" type="button">Fechar</button>
               </div>
@@ -324,12 +324,15 @@
                 <label>Começar em
                   <input id="shortScheduleDate" type="date">
                 </label>
+                <label>Vídeos por dia
+                  <select id="shortSchedulePerDay"><option value="1" selected>1 por dia</option><option value="2">2 por dia</option><option value="3">3 por dia</option><option value="4">4 por dia</option><option value="5">5 por dia</option><option value="6">6 por dia</option><option value="7">7 por dia</option><option value="8">8 por dia</option><option value="9">9 por dia</option><option value="10">10 por dia</option></select>
+                </label>
                 <div id="shortsCapacity" class="shorts-capacity"></div>
               </div>
 
               <div class="shorts-schedule-summary">
                 <span>Selecionados</span><strong id="shortScheduleCount">0</strong>
-                <span>Limite diário</span><strong>10</strong>
+                <span>Limite diário</span><strong id="shortSchedulePerDayLabel">1</strong>
               </div>
 
               <button id="shortPreviewSchedule" class="secondary full" type="button">Gerar prévia dos horários</button>
@@ -348,8 +351,8 @@
           <aside class="shorts-sidebar">
             <div class="panel capacity-panel">
               <span class="pill">AUTOMAÇÃO</span>
-              <h3>10 Shorts por dia</h3>
-              <p>Os horários são distribuídos automaticamente nos próximos espaços disponíveis.</p>
+              <h3>Distribuição por dia</h3>
+              <p>Escolha quantos vídeos por dia e os horários são distribuídos automaticamente nos próximos espaços disponíveis.</p>
               <div id="shortsCapacitySide" class="shorts-capacity-side"><span>Carregando capacidade...</span></div>
             </div>
             <div class="panel capacity-panel">
@@ -387,7 +390,7 @@
         <div class="stock-stats"><article><strong id="ttAvailable">0</strong><span>Disponíveis</span></article><article><strong id="ttScheduled">0</strong><span>Agendados</span></article><article><strong id="ttSubmitted">0</strong><span>Enviados</span></article><article><strong id="ttErrors">0</strong><span>Erros</span></article></div>
         <div id="ttBulkBar" class="panel stock-bulk-bar hidden"><strong><span id="ttSelectedCount">0</span> selecionados</strong><button id="ttScheduleSelected" class="secondary">📅 Agendar</button><button id="ttPublishSelected" class="primary">♪ Publicar agora</button><button id="ttClearSelected" class="text-btn">Limpar</button></div>
         <div class="panel stock-list-panel"><div class="panel-head"><label class="check"><input id="ttSelectAll" type="checkbox"><span>Selecionar todos</span></label><div class="short-tabs"><button class="secondary active" data-tt-status="AVAILABLE">Disponíveis</button><button class="secondary" data-tt-status="SCHEDULED">Agendados</button><button class="secondary" data-tt-status="SUBMITTED">Enviados</button><button class="secondary" data-tt-status="ERROR">Erros</button></div><button id="ttRefresh" class="text-btn">Atualizar</button></div><div id="ttList" class="stock-list"><div class="empty"><p>Carregando vídeos do TikTok...</p></div></div></div>
-        <div id="ttSchedulePanel" class="panel auto-schedule hidden"><div class="panel-head"><div><h2>📅 Agendar no TikTok</h2><p>A fila será executada pelo Tube AutoPilot no horário definido.</p></div><button id="ttCloseSchedule" class="text-btn">Fechar</button></div><div class="schedule-fields"><label>Quantidade<input id="ttScheduleQty" readonly></label><label>Data<input id="ttScheduleDate" type="date"></label><label>Hora<input id="ttScheduleTime" type="time" value="19:00"></label><label>Intervalo<select id="ttScheduleInterval"><option value="30">30 minutos</option><option value="60" selected>1 hora</option><option value="120">2 horas</option><option value="180">3 horas</option></select></label></div><button id="ttConfirmSchedule" class="primary full">Confirmar agendamento</button><p class="hint">Importante: para publicar no horário, o servidor precisa estar rodando com <strong>npm start</strong>.</p></div>
+        <div id="ttSchedulePanel" class="panel auto-schedule hidden"><div class="panel-head"><div><h2>📅 Agendar no TikTok</h2><p>A fila será executada pelo Tube AutoPilot no horário definido.</p></div><button id="ttCloseSchedule" class="text-btn">Fechar</button></div><div class="schedule-fields"><label>Quantidade<input id="ttScheduleQty" readonly></label><label>Data<input id="ttScheduleDate" type="date"></label><label>Hora<input id="ttScheduleTime" type="time" value="19:00"></label><label>Intervalo<select id="ttScheduleInterval"><option value="30">30 minutos</option><option value="60" selected>1 hora</option><option value="120">2 horas</option><option value="180">3 horas</option><option value="720">12 horas</option><option value="1440">1 dia (1 por dia)</option></select></label></div><button id="ttConfirmSchedule" class="primary full">Confirmar agendamento</button><p class="hint">Importante: para publicar no horário, o servidor precisa estar rodando com <strong>npm start</strong>.</p></div>
       </section>
 
       <section class="view" id="tiktok-schedules"><div class="section-title"><span class="pill">TIKTOK</span><h1>📅 Agendamentos TikTok</h1><p>Veja a fila que será enviada automaticamente quando chegar o horário.</p></div><div class="panel"><div id="ttScheduleList" class="queue"></div></div></section>

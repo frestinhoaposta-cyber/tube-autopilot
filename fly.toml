@@ -1,0 +1,35 @@
+# Tube AutoPilot — configuração Fly.io
+# Use: flyctl launch (primeira vez) ou flyctl deploy
+app = "tube-autopilot"
+
+primary_region = "gru" # São Paulo (Brasil) — região mais próxima para menor latência
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  # O servidor lê a porta da variável PORT (setada pelo Fly automaticamente em produção)
+  PORT = "8080"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = false # NUNCA colocar para dormir — essencial para agendamento 24/7
+  auto_start_machines = true
+
+  [[http_service.ports]]
+    port = 80
+    handlers = ["http"]
+  [[http_service.ports]]
+    port = 443
+    handlers = ["tls", "http"]
+
+# Volume persistente para data/ (tokens OAuth, inventário, vídeos)
+# Evita perder contas conectadas e agendamentos a cada restart/deploy.
+[[mounts]]
+  source = "tube_data"
+  destination = "/app/data"
+
+# Máquina ultrarrápida para vídeos (mínimo recomendado: 1GB RAM)
+[machine]
+  memory = "1gb" # Aumente se subir vídeos grandes (até 3GB)

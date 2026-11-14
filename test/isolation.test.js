@@ -283,6 +283,178 @@ test('10.3 — inventário isolado e upload por usuário', async () => {
   assert.equal((await upNoAcc.json()).error, 'Selecione um canal conectado para o envio.');
 });
 
+test('10.3.1 — copia vídeos entre canais do mesmo usuário sem perder o original', async () => {
+  const videosDir = path.join(projectRoot, 'data', 'videos');
+  fs.mkdirSync(videosDir, { recursive: true });
+  const videoName = `teste-copia-canal-${Date.now()}.mp4`;
+  const videoPath = path.join(videosDir, videoName);
+  fs.writeFileSync(videoPath, Buffer.from([0, 1, 2, 3, 4, 5, 6, 7]));
+  let accA2 = null;
+
+  try {
+    accA2 = store.saveAccount({ userId: idA, channelId: 'CH_A_B', channelTitle: 'Canal A2', refreshToken: 'refresh-segundo-canal', status: 'CONNECTED' });
+    assert.notEqual(accA2.accountId, accA.accountId);
+
+    const now = new Date().toISOString();
+    const source = {
+      id: crypto.randomUUID(), userId: idA, accountId: accA.accountId, channelId: 'CH_A_A',
+      contentType: 'LONG', status: 'PUBLISHED', title: 'Vídeo replicado', filePath: videoPath,
+      fileHash: crypto.createHash('sha256').update(fs.readFileSync(videoPath)).digest('hex'),
+      youtubeVideoId: 'yt-original-123', uploadedAt: now, publishedAt: now,
+      attemptCount: 3, lastAttemptAt: now, autoCommentEnabled: true, commentText: 'comentário do original',
+      commentStatus: 'POSTED', commentAttemptCount: 1, commentPostedAt: now, youtubeCommentId: 'comment-original',
+      tags: ['tag-original'], description: 'descrição original', youtubeCategoryId: '20', youtubeCategoryName: 'Gatos',
+      createdAt: now
+    };
+    fs.writeFileSync(inventoryPath, JSON.stringify([source]));
+
+    const anonCopy = await fetch(`${base()}/api/inventory/actions/copy-to-channel`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: [source.id], accountId: accA2.accountId })
+    });
+    assert.equal(anonCopy.status, 401);
+
+    const foreignChannel = await fetch(`${base()}/api/inventory/actions/copy-to-channel`, {
+      method: 'POST', headers: { ...withCookie(cookieA), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: [source.id], accountId: accB.accountId })
+    });
+    assert.equal(foreignChannel.status, 403);
+
+    const foreignVideo = await fetch(`${base()}/api/inventory/actions/copy-to-channel`, {
+      method: 'POST', headers: { ...withCookie(cookieB), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: [source.id], accountId: accB.accountId })
+    });
+    assert.equal(foreignVideo.status, 404);
+
+    const copyResponse = await fetch(`${base()}/api/inventory/actions/copy-to-channel`, {
+      method: 'POST', headers: { ...withCookie(cookieA), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: [source.id], accountId: accA2.accountId })
+    });
+    assert.equal(copyResponse.status, 201);
+    const copyText = await copyResponse.text();
+    assertNoTokens(copyText);
+    const copyJson = JSON.parse(copyText);
+    assert.equal(copyJson.created.length, 1);
+    assert.equal(copyJson.skipped.length, 0);
+
+    const created = copyJson.created[0];
+    assert.notEqual(created.id, source.id);
+    assert.equal(created.accountId, accA2.accountId);
+    assert.equal(created.channelId, 'CH_A_B');
+    assert.equal(created.sourceInventoryId, source.id);
+    assert.equal(created.status, 'AVAILABLE');
+    assert.equal(created.title, 'Vídeo replicado');
+    assert.equal(created.description, 'descrição original');
+    assert.deepEqual(created.tags, ['tag-original']);
+    assert.equal(created.youtubeCategoryName, 'Gatos');
+    assert.equal(created.filePath, videoName);
+    assert.equal(created.fileExists, true);
+    assert.equal(created.youtubeVideoId, null);
+    assert.equal(created.scheduledAt, null);
+    assert.equal(created.publishedAt, null);
+    assert.equal(created.uploadedAt, null);
+    assert.equal(created.attemptCount, 0);
+    assert.equal(created.autoCommentEnabled, false);
+    assert.equal(created.commentStatus, null);
+    assert.equal(created.commentError, null);
+    assert.equal(created.youtubeCommentId, null);
+    assert.equal(created.commentPostedAt, null);
+
+    const diskAfterCopy = JSON.parse(fs.readFileSync(inventoryPath, 'utf8'));
+    const original = diskAfterCopy.find(i => i.id === source.id);
+    assert.equal(original.accountId, accA.accountId);
+    assert.equal(original.status, 'PUBLISHED');
+    assert.equal(original.youtubeVideoId, 'yt-original-123');
+    assert.equal(original.commentStatus, 'POSTED');
+    const storedCopy = diskAfterCopy.find(i => i.id === created.id);
+    assert.equal(storedCopy.filePath, videoPath);
+    assert.equal(fs.readdirSync(videosDir).filter(name => name === videoName).length, 1);
+
+    const listTarget = await (await fetch(`${base()}/api/inventory?contentType=LONG&accountId=${encodeURIComponent(accA2.accountId)}`, { headers: withCookie(cookieA) })).json();
+    assert.equal(listTarget.length, 1);
+    assert.equal(listTarget[0].id, created.id);
+    const listOrigin = await (await fetch(`${base()}/api/inventory?contentType=LONG&accountId=${encodeURIComponent(accA.accountId)}`, { headers: withCookie(cookieA) })).json();
+    assert.equal(listOrigin.length, 1);
+    assert.equal(listOrigin[0].id, source.id);
+
+    const secondCopy = await fetch(`${base()}/api/inventory/actions/copy-to-channel`, {
+      method: 'POST', headers: { ...withCookie(cookieA), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: [source.id], accountId: accA2.accountId })
+    });
+    assert.equal(secondCopy.status, 201);
+    const secondJson = await secondCopy.json();
+    assert.equal(secondJson.created.length, 0);
+    assert.equal(secondJson.skipped[0].reason, 'ALREADY_IN_CHANNEL');
+    assert.equal(secondJson.skipped[0].videoId, source.id);
+    assert.equal(JSON.parse(fs.readFileSync(inventoryPath, 'utf8')).length, 2);
+  } finally {
+    fs.rmSync(videoPath, { force: true });
+    if (accA2) store.removeAccount(idA, accA2.accountId);
+  }
+});
+
+test('10.3.2 — importação ignora arquivos repetidos', async () => {
+  fs.writeFileSync(inventoryPath, '[]');
+  const createdPaths = [];
+  try {
+    const sameBytes = Buffer.from([9, 8, 7, 6, 5, 4, 3, 2, 1]);
+    const fd = new FormData();
+    fd.append('category', 'brainrot');
+    fd.append('contentType', 'LONG');
+    fd.append('videos', new Blob([sameBytes], { type: 'video/mp4' }), 'repetido-a.mp4');
+    fd.append('videos', new Blob([sameBytes], { type: 'video/mp4' }), 'repetido-b.mp4');
+    const response = await fetch(`${base()}/api/inventory`, { method: 'POST', headers: withCookie(cookieA), body: fd });
+    assert.equal(response.status, 201);
+    const body = await response.json();
+    assert.equal(body.added, 1);
+    assert.equal(body.skipped, 1);
+    assert.equal(body.skippedFiles[0].reason, 'DUPLICATE_VIDEO');
+
+    const sameName = new FormData();
+    sameName.append('category', 'brainrot');
+    sameName.append('contentType', 'LONG');
+    sameName.append('videos', new Blob([Buffer.from([1, 2, 3])], { type: 'video/mp4' }), 'repetido-a.mp4');
+    const nameResponse = await fetch(`${base()}/api/inventory`, { method: 'POST', headers: withCookie(cookieA), body: sameName });
+    assert.equal(nameResponse.status, 201);
+    const nameBody = await nameResponse.json();
+    assert.equal(nameBody.added, 0);
+    assert.equal(nameBody.skippedFiles[0].reason, 'DUPLICATE_FILENAME');
+
+    const stored = JSON.parse(fs.readFileSync(inventoryPath, 'utf8'));
+    assert.equal(stored.length, 1);
+    createdPaths.push(stored[0].filePath);
+    assert.equal(fs.existsSync(stored[0].filePath), true);
+  } finally {
+    createdPaths.forEach(filePath => fs.rmSync(filePath, { force: true }));
+  }
+});
+
+test('10.3.3 — agendamento distribui um vídeo por dia', async () => {
+  const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+  const ids = [crypto.randomUUID(), crypto.randomUUID(), crypto.randomUUID()];
+  const items = ids.map((id, index) => ({
+    id, userId: idA, accountId: accA.accountId, channelId: 'CH_A_A', contentType: 'LONG',
+    status: 'AVAILABLE', title: `Vídeo ${index + 1}`, filePath: 'missing.mp4', createdAt: new Date().toISOString()
+  }));
+  fs.writeFileSync(inventoryPath, JSON.stringify(items));
+
+  const preview = await fetch(`${base()}/api/inventory/long-schedule/preview`, {
+    method: 'POST', headers: { ...withCookie(cookieA), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ videoIds: ids, startDate: tomorrow, perDay: 1 })
+  });
+  assert.equal(preview.status, 200);
+  const body = await preview.json();
+  assert.equal(body.perDay, 1);
+  assert.equal(body.items.length, 3);
+  const dates = body.items.map(item => item.scheduledDate);
+  assert.equal(new Set(dates).size, 3);
+  dates.forEach(date => assert.equal(dates.filter(value => value === date).length, 1));
+
+  const capacity = await (await fetch(`${base()}/api/inventory/long-schedule/capacity?startDate=${tomorrow}&accountId=${encodeURIComponent(accA.accountId)}&perDay=1`, { headers: withCookie(cookieA) })).json();
+  assert.equal(capacity.perDay, 1);
+  capacity.days.forEach(day => assert.ok(day.available <= 1));
+});
+
 test('10.4 — worker isola sem dono e usa userId+accountId; logout', async () => {
   const due = new Date(Date.now() - 2 * 60 * 1000).toISOString();
   const schedOwned = { id: crypto.randomUUID(), userId: idA, accountId: accA.accountId, channelId: 'CH_A_A', contentType: 'LONG', status: 'SCHEDULED', scheduledAt: due, filePath: 'missing-own.mp4', createdAt: due };

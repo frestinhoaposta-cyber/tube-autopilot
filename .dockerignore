@@ -1,0 +1,16 @@
+# Não enviar segredos
+.env
+.env.*
+
+# Não enviar dados locais (tokens, vídeos, inventário) — ficam em volume no Fly
+data/
+*.rar
+*.log
+*.tmp
+*.bak
+
+# Dependências (instaladas dentro do container)
+node_modules/
+
+# Repositório
+.git/

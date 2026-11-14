@@ -121,7 +121,7 @@ async function generateFromVideo(){
   try{
     const r=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({categoryId:$('#generatorCategory').value,topic:$('#topic').value,keywords:$('#keywords').value,tone:$('#tone').value,fileName:file.name})});
     const d=await r.json();if(!r.ok)throw new Error(d.error||'Erro');
-    if(!d.description||!Array.isArray(d.tags)||d.tags.length!==14)throw new Error('BUG: descrição fixa ou tags da categoria não foram carregadas');
+    if(!d.description||!Array.isArray(d.tags)||!d.tags.length)throw new Error('BUG: descrição fixa ou tags da categoria não foram carregadas');
     renderTitleSuggestions(d.titles);$('#resultTitle').value=d.title;$('#resultDescription').value=d.description;$('#resultTags').value=d.tags.join(', ');generatorYoutubeCategoryId=d.youtubeCategoryId;$('#generatorYoutubeCategory').textContent=d.youtubeCategoryName||'Jogos';$('#scheduleTitle').value=d.title;$('#aiStatus').textContent='Pronto';toast('Título gerado e metadados da categoria aplicados');
   }catch(e){$('#aiStatus').textContent='Erro';toast(e.message||'Nao foi possivel gerar agora',6000)}
   finally{btn.disabled=false;btn.textContent='Gerar título e aplicar metadados'}
@@ -228,16 +228,21 @@ async function loadStockCategories(){
   try{const current=$('#stockCategory').value;const categories=await stockApi('/api/inventory/categories');$('#stockCategory').innerHTML=categories.map(v=>`<option value="${escapeHtml(v.id)}">${escapeHtml(v.emoji)} ${escapeHtml(v.name)}</option>`).join('');if(categories.some(v=>v.id===current))$('#stockCategory').value=current;await loadStock()}
   catch(error){toast(error.message,6000)}
 }
-async function loadStockChannels(){
-  try{
-    stockState.accounts=(await stockApi('/api/auth/accounts')).filter(account=>account.connected);
-    if(!stockState.accounts.some(account=>account.accountId===stockState.accountId)) stockState.accountId=stockState.accounts.find(account=>account.isDefault)?.accountId||stockState.accounts[0]?.accountId||'__unassigned__';
-    const tabs=$('#stockChannelTabs');
-    tabs.innerHTML=stockState.accounts.map(account=>`<button class="stock-channel-tab ${stockState.accountId===account.accountId?'active':''}" data-stock-account="${escapeHtml(account.accountId)}">${escapeHtml(accountLabel(account))}</button>`).join('')+`<button class="stock-channel-tab ${stockState.accountId==='__unassigned__'?'active':''}" data-stock-account="__unassigned__">Sem canal</button>`;
-    $('#stockAssignAccount').innerHTML=stockState.accounts.map(account=>`<option value="${escapeHtml(account.accountId)}">${escapeHtml(accountLabel(account))}</option>`).join('');
-    tabs.querySelectorAll('[data-stock-account]').forEach(button=>button.onclick=()=>{stockState.accountId=button.dataset.stockAccount;stockState.selected.clear();tabs.querySelectorAll('.stock-channel-tab').forEach(tab=>tab.classList.toggle('active',tab===button));loadStock()});
-  }catch(error){toast(error.message,6000)}
-}
+  async function loadStockChannels(){
+    try{
+      stockState.accounts=(await stockApi('/api/auth/accounts')).filter(account=>account.connected);
+      // Sempre manter "Sem canal" disponível. Se não havia conta selecionada ou era inválida,
+      // prefere manter sem canal para não esconder itens legados.
+      if(stockState.accountId && stockState.accountId !== '__unassigned__' && !stockState.accounts.some(account=>account.accountId===stockState.accountId)){
+        // mantém o valor atual apenas se era válido; senão volta para sem canal
+        stockState.accountId='__unassigned__';
+      }
+      const tabs=$('#stockChannelTabs');
+      tabs.innerHTML=stockState.accounts.map(account=>`<button class="stock-channel-tab ${stockState.accountId===account.accountId?'active':''}" data-stock-account="${escapeHtml(account.accountId)}">${escapeHtml(accountLabel(account))}</button>`).join('')+`<button class="stock-channel-tab ${stockState.accountId==='__unassigned__'?'active':''}" data-stock-account="__unassigned__">Sem canal</button>`;
+      $('#stockAssignAccount').innerHTML=stockState.accounts.map(account=>`<option value="${escapeHtml(account.accountId)}">${escapeHtml(accountLabel(account))}</option>`).join('');
+      tabs.querySelectorAll('[data-stock-account]').forEach(button=>button.onclick=()=>{stockState.accountId=button.dataset.stockAccount;stockState.selected.clear();tabs.querySelectorAll('.stock-channel-tab').forEach(tab=>tab.classList.toggle('active',tab===button));loadStock()});
+    }catch(error){toast(error.message,6000)}
+  }
 async function loadStock(){
   if(!$('#stockList'))return;
   try{
@@ -292,13 +297,15 @@ $('#addStockBtn').onclick=async()=>{
   const btn=$('#addStockBtn');btn.disabled=true;btn.textContent='Adicionando...';
   const base=new FormData();base.append('category',$('#stockCategory').value);base.append('contentType','LONG');if(stockState.accountId!=='__unassigned__')base.append('accountId',stockState.accountId);
   const batches=[];for(let i=0;i<files.length;i+=100)batches.push(files.slice(i,i+100));
-  let added=0,failed=0,firstError='';
+  let added=0,failed=0,skipped=0,firstError='',skippedFiles=[];
   for(const batch of batches){
     const fd=new FormData();for(const entry of base)fd.append(entry[0],entry[1]);batch.forEach(file=>fd.append('videos',file));
-    await new Promise(resolve=>{const xhr=new XMLHttpRequest();xhr.open('POST','/api/inventory');xhr.upload.onprogress=e=>{if(e.lengthComputable&&$('#stockUploadProgress'))$('#stockUploadProgress').style.width=`${Math.round(e.loaded/e.total*100)}%`};xhr.onload=()=>{let data={};try{data=JSON.parse(xhr.responseText)}catch{}if(xhr.status>=200&&xhr.status<300)added+=(data.added??data.length??0);else{failed++;if(!firstError)firstError=data.error||`Falha ao adicionar vídeos (lote de ${batch.length})`}resolve()};xhr.onerror=()=>{failed++;if(!firstError)firstError='Erro de conexão durante o envio';resolve()};xhr.send(fd);});
+    await new Promise(resolve=>{const xhr=new XMLHttpRequest();xhr.open('POST','/api/inventory');xhr.upload.onprogress=e=>{if(e.lengthComputable&&$('#stockUploadProgress'))$('#stockUploadProgress').style.width=`${Math.round(e.loaded/e.total*100)}%`};xhr.onload=()=>{let data={};try{data=JSON.parse(xhr.responseText)}catch{}if(xhr.status>=200&&xhr.status<300){added+=(data.added??data.length??0);skipped+=data.skipped??0;skippedFiles.push(...(data.skippedFiles||[]))}else{failed++;if(!firstError)firstError=data.error||`Falha ao adicionar vídeos (lote de ${batch.length})`}resolve()};xhr.onerror=()=>{failed++;if(!firstError)firstError='Erro de conexão durante o envio';resolve()};xhr.send(fd);});
   }
   btn.disabled=false;btn.textContent='Adicionar ao estoque';if($('#stockUploadProgress'))$('#stockUploadProgress').style.width='0%';
-  if(failed){toast(firstError,8000)}else{toast(`${added} vídeo(s) adicionados com metadados${batches.length>1?` (${batches.length} lotes de até 100)`:''}`,6000);$('#stockFiles').value='';$('#stockFileSummary').textContent='Nenhum vídeo selecionado. Arraste os vídeos para a área acima ou clique para escolher.';await loadStock()}
+  if(failed){toast(firstError,8000)}else{
+    const reasons=['DUPLICATE_FILENAME','DUPLICATE_VIDEO'].includes(skippedFiles[0]?.reason)?' já existiam na biblioteca':skippedFiles[0]?.reason?` (${skippedFiles[0].reason})`:'';const skippedMsg=skipped?`; ${skipped} pulado(s)${reasons||` (ex.: ${escapeHtml(skippedFiles[0]?.filename||'')})`}`:'';
+    toast(`${added} vídeo(s) adicionados com metadados${skippedMsg}${batches.length>1?` (${batches.length} lotes de até 100)`:''}`,8000);$('#stockFiles').value='';$('#stockFileSummary').textContent='Nenhum vídeo selecionado. Arraste os vídeos para a área acima ou clique para escolher.';await loadStock()}
 };
 $('#refreshStockBtn').onclick=loadStock;$('#stockCategory').onchange=loadStock;
 $$('[data-stock-status]').forEach(b=>b.onclick=()=>{stockState.status=b.dataset.stockStatus;$$('[data-stock-status]').forEach(x=>x.classList.toggle('active',x===b));loadStock()});
@@ -306,6 +313,7 @@ $('#stockSelectAll').onchange=e=>{stockState.selected=e.target.checked?new Set(s
 $('#bulkRegenerateBtn').onclick=async()=>{try{await stockApi('/api/inventory/actions/regenerate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids:[...stockState.selected]})});toast('Novos títulos únicos gerados');await loadStock()}catch(error){toast(error.message,7000)}};
 $('#bulkDeleteBtn').onclick=async()=>{const ids=[...stockState.selected];if(!confirm(`Excluir ${ids.length} vídeo(s) do estoque e do disco?`))return;try{await stockApi('/api/inventory/actions/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids})});stockState.selected.clear();toast('Vídeos excluídos');await loadStock()}catch(error){toast(error.message,7000)}};
 $('#stockAssignBtn').onclick=async()=>{const ids=[...stockState.selected],accountId=$('#stockAssignAccount').value;if(!ids.length||!accountId)return;try{const data=await stockApi('/api/inventory/actions/assign-account',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids,accountId})});stockState.selected.clear();toast(`${data.updated} vídeo(s) movido(s) para o canal`);await loadStock()}catch(error){toast(error.message,7000)}};
+$('#stockCopyBtn').onclick=async()=>{const ids=[...stockState.selected],accountId=$('#stockAssignAccount').value;if(!ids.length||!accountId)return;const target=stockState.accounts.find(account=>account.accountId===accountId);const label=target?accountLabel(target):'outro canal';if(!confirm(`Copiar ${ids.length} vídeo(s) para o canal "${label}"?\n\nOs vídeos originais continuam no canal atual e o arquivo não é duplicado no disco.`))return;try{const data=await stockApi('/api/inventory/actions/copy-to-channel',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids,accountId})});stockState.selected.clear();const skipped=(data.skipped||[]).length;toast(`${data.created.length} cópia(s) criada(s) em "${label}"${skipped?` · ${skipped} já existia(m) no destino`:''}`,8000);await loadStock()}catch(error){toast(error.message,7000)}};
 async function runBulkUpload(ids,schedule=null){
   if(!authState.connected){toast('Conecte seu Google/YouTube primeiro',7000);go('settings');return}const body={ids,...(schedule||{})};toast(`Iniciando envio de ${ids.length} vídeo(s). Não feche a página.`,6000);
   try{const result=await stockApi('/api/inventory/actions/upload',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const errors=result.results.filter(v=>!v.ok);toast(errors.length?`${result.results.length-errors.length} enviados; ${errors.length} com erro`:`${result.results.length} vídeo(s) processados com sucesso`,8000);stockState.selected.clear();$('#autoSchedulePanel').classList.add('hidden');await loadStock()}
@@ -324,12 +332,14 @@ $('#bulkScheduleBtn').onclick=()=>{
   if(ids.length!==stockState.selected.size)toast(`${stockState.selected.size-ids.length} vídeo(s) ignorado(s) por já estarem publicados/agendados.`,6000);
   openAutoSchedule(ids)
 };
-function openAutoSchedule(ids){stockState.scheduleIds=ids;stockState.preview=null;$('#autoQuantity').textContent=ids.length;const tomorrow=new Date(Date.now()+86400000);$('#autoDate').value=tomorrow.toISOString().slice(0,10);$('#schedulePreview').innerHTML='';$('#longScheduleConfirmBox').classList.add('hidden');$('#autoSchedulePanel').classList.remove('hidden');loadLongScheduleCapacity();$('#autoSchedulePanel').scrollIntoView({behavior:'smooth'})}
+function autoPerDay(){return Math.max(1,Math.min(10,Number($('#autoPerDay')?.value||1)||1))}
+function openAutoSchedule(ids){stockState.scheduleIds=ids;stockState.preview=null;$('#autoQuantity').textContent=ids.length;if(!$('#autoPerDay').value)$('#autoPerDay').value='1';$('#autoPerDayLabel').textContent=autoPerDay();const tomorrow=new Date(Date.now()+86400000);$('#autoDate').value=tomorrow.toISOString().slice(0,10);$('#schedulePreview').innerHTML='';$('#longScheduleConfirmBox').classList.add('hidden');$('#autoSchedulePanel').classList.remove('hidden');loadLongScheduleCapacity();$('#autoSchedulePanel').scrollIntoView({behavior:'smooth'})}
 $('#closeAutoSchedule').onclick=()=>$('#autoSchedulePanel').classList.add('hidden');
-async function loadLongScheduleCapacity(){try{const params=new URLSearchParams();if($('#autoDate')?.value)params.set('startDate',$('#autoDate').value);params.set('accountId',stockState.accountId);const data=await stockApi(`/api/inventory/long-schedule/capacity?${params}`);$('#longScheduleCapacity').innerHTML=data.days.map(day=>`<span>${new Date(day.date+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit'})}: <strong>${day.available} vagas</strong></span>`).join('')}catch(error){console.warn('long capacity:',error.message)}}
+async function loadLongScheduleCapacity(){try{const params=new URLSearchParams();if($('#autoDate')?.value)params.set('startDate',$('#autoDate').value);params.set('accountId',stockState.accountId);params.set('perDay',autoPerDay());const data=await stockApi(`/api/inventory/long-schedule/capacity?${params}`);$('#longScheduleCapacity').innerHTML=data.days.map(day=>`<span>${new Date(day.date+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit'})}: <strong>${day.available} vagas</strong></span>`).join('')}catch(error){console.warn('long capacity:',error.message)}}
 $('#autoDate').onchange=()=>{stockState.preview=null;$('#schedulePreview').innerHTML='';$('#longScheduleConfirmBox').classList.add('hidden');loadLongScheduleCapacity()};
-$('#previewScheduleBtn').onclick=async()=>{const startDate=$('#autoDate').value;if(!startDate){toast('Informe a data inicial');return}const btn=$('#previewScheduleBtn');btn.disabled=true;btn.textContent='Calculando horários...';try{const data=await stockApi('/api/inventory/long-schedule/preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({videoIds:stockState.scheduleIds,startDate})});stockState.preview=data.items;const grouped={};data.items.forEach(item=>(grouped[item.scheduledDate]||=[]).push(item));$('#schedulePreview').innerHTML=Object.entries(grouped).map(([day,rows])=>`<div class="short-preview-day"><header><strong>${new Date(day+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'long'})}</strong><span>${rows.length}/${data.maxPerDay}</span></header>${rows.map(item=>`<div><b>${escapeHtml(item.scheduledSlot)}</b><span>${escapeHtml(item.title)}</span></div>`).join('')}</div>`).join('');$('#longScheduleConfirmBox').classList.remove('hidden');toast('Prévia pronta. Confira os horários.',4000)}catch(error){toast(error.message,8000)}finally{btn.disabled=false;btn.textContent='Gerar prévia dos horários'}};
-$('#confirmScheduleBtn').onclick=async()=>{if(!stockState.preview?.length){toast('Gere a prévia primeiro');return}if(!authState.connected){toast('Conecte seu Google/YouTube primeiro',7000);go('settings');return}const btn=$('#confirmScheduleBtn');btn.disabled=true;btn.textContent='Agendando...';try{const data=await stockApi('/api/inventory/long-schedule/confirm',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({videoIds:stockState.scheduleIds,startDate:$('#autoDate').value})});const ok=data.items.filter(item=>item.ok).length,failed=data.items.length-ok;toast(failed?`${ok} agendado(s); ${failed} com erro`:`✅ ${ok} vídeo(s) agendado(s) no YouTube!`,8000);stockState.selected.clear();stockState.preview=null;$('#autoSchedulePanel').classList.add('hidden');await loadStock();refreshDashboard()}catch(error){toast(error.message,9000)}finally{btn.disabled=false;btn.textContent='Confirmar agendamento'}};
+$('#autoPerDay').onchange=()=>{$('#autoPerDayLabel').textContent=autoPerDay();stockState.preview=null;$('#schedulePreview').innerHTML='';$('#longScheduleConfirmBox').classList.add('hidden');loadLongScheduleCapacity()};
+$('#previewScheduleBtn').onclick=async()=>{const startDate=$('#autoDate').value;if(!startDate){toast('Informe a data inicial');return}const btn=$('#previewScheduleBtn');btn.disabled=true;btn.textContent='Calculando horários...';try{const data=await stockApi('/api/inventory/long-schedule/preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({videoIds:stockState.scheduleIds,startDate,perDay:autoPerDay()})});stockState.preview=data.items;const grouped={};data.items.forEach(item=>(grouped[item.scheduledDate]||=[]).push(item));$('#schedulePreview').innerHTML=Object.entries(grouped).map(([day,rows])=>`<div class="short-preview-day"><header><strong>${new Date(day+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'long'})}</strong><span>${rows.length}/${data.perDay||data.maxPerDay}</span></header>${rows.map(item=>`<div><b>${escapeHtml(item.scheduledSlot)}</b><span>${escapeHtml(item.title)}</span></div>`).join('')}</div>`).join('');$('#longScheduleConfirmBox').classList.remove('hidden');toast('Prévia pronta. Confira os horários.',4000)}catch(error){toast(error.message,8000)}finally{btn.disabled=false;btn.textContent='Gerar prévia dos horários'}};
+$('#confirmScheduleBtn').onclick=async()=>{if(!stockState.preview?.length){toast('Gere a prévia primeiro');return}if(!authState.connected){toast('Conecte seu Google/YouTube primeiro',7000);go('settings');return}const btn=$('#confirmScheduleBtn');btn.disabled=true;btn.textContent='Agendando...';try{const data=await stockApi('/api/inventory/long-schedule/confirm',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({videoIds:stockState.scheduleIds,startDate:$('#autoDate').value,perDay:autoPerDay()})});const ok=data.items.filter(item=>item.ok).length,failed=data.items.length-ok;toast(failed?`${ok} agendado(s); ${failed} com erro`:`✅ ${ok} vídeo(s) agendado(s) no YouTube!`,8000);stockState.selected.clear();stockState.preview=null;$('#autoSchedulePanel').classList.add('hidden');await loadStock();refreshDashboard()}catch(error){toast(error.message,9000)}finally{btn.disabled=false;btn.textContent='Confirmar agendamento'}};
 
 // Inicialização da Biblioteca de vídeos longos
 async function loadChannelStock(){await loadStockChannels();await loadStockCategories()}
@@ -357,16 +367,18 @@ const shortsState = {
   shortHashes: new Set()
 };
 
-async function loadShortChannels(){
-  try{
-    shortsState.accounts=(await stockApi('/api/auth/accounts')).filter(account=>account.connected);
-    if(!shortsState.accounts.some(account=>account.accountId===shortsState.accountId)) shortsState.accountId=shortsState.accounts.find(account=>account.isDefault)?.accountId||shortsState.accounts[0]?.accountId||'__unassigned__';
-    const tabs=$('#shortChannelTabs');
-    tabs.innerHTML=shortsState.accounts.map(account=>`<button class="stock-channel-tab ${shortsState.accountId===account.accountId?'active':''}" data-short-account="${escapeHtml(account.accountId)}">${escapeHtml(accountLabel(account))}</button>`).join('')+`<button class="stock-channel-tab ${shortsState.accountId==='__unassigned__'?'active':''}" data-short-account="__unassigned__">Sem canal</button>`;
-    $('#shortAssignAccount').innerHTML=shortsState.accounts.map(account=>`<option value="${escapeHtml(account.accountId)}">${escapeHtml(accountLabel(account))}</option>`).join('');
-    tabs.querySelectorAll('[data-short-account]').forEach(button=>button.onclick=()=>{shortsState.accountId=button.dataset.shortAccount;shortsState.selected.clear();shortsState.stockSelected.clear();tabs.querySelectorAll('.stock-channel-tab').forEach(tab=>tab.classList.toggle('active',tab===button));loadShortsView();loadShortStock();loadShortsCapacity()});
-  }catch(error){toast(error.message,6000)}
-}
+  async function loadShortChannels(){
+    try{
+      shortsState.accounts=(await stockApi('/api/auth/accounts')).filter(account=>account.connected);
+      if(shortsState.accountId && shortsState.accountId !== '__unassigned__' && !shortsState.accounts.some(account=>account.accountId===shortsState.accountId)){
+        shortsState.accountId='__unassigned__';
+      }
+      const tabs=$('#shortChannelTabs');
+      tabs.innerHTML=shortsState.accounts.map(account=>`<button class="stock-channel-tab ${shortsState.accountId===account.accountId?'active':''}" data-short-account="${escapeHtml(account.accountId)}">${escapeHtml(accountLabel(account))}</button>`).join('')+`<button class="stock-channel-tab ${shortsState.accountId==='__unassigned__'?'active':''}" data-short-account="__unassigned__">Sem canal</button>`;
+      $('#shortAssignAccount').innerHTML=shortsState.accounts.map(account=>`<option value="${escapeHtml(account.accountId)}">${escapeHtml(accountLabel(account))}</option>`).join('');
+      tabs.querySelectorAll('[data-short-account]').forEach(button=>button.onclick=()=>{shortsState.accountId=button.dataset.shortAccount;shortsState.selected.clear();shortsState.stockSelected.clear();tabs.querySelectorAll('.stock-channel-tab').forEach(tab=>tab.classList.toggle('active',tab===button));loadShortsView();loadShortStock();loadShortsCapacity()});
+    }catch(error){toast(error.message,6000)}
+  }
 
 async function openShortLibraryPicker(){
   const picker = $('#shortLibraryPicker');
@@ -570,10 +582,11 @@ async function loadShortsCategories(){
     });
   }catch(error){ toast(error.message,6000); }
 }
+function shortPerDay(){return Math.max(1,Math.min(10,Number($('#shortSchedulePerDay')?.value||1)||1))}
 async function loadShortsCapacity(){
   try{
     const date = $('#shortScheduleDate')?.value || '';
-    const params=new URLSearchParams({accountId:shortsState.accountId});if(date)params.set('startDate',date);
+    const params=new URLSearchParams({accountId:shortsState.accountId,perDay:shortPerDay()});if(date)params.set('startDate',date);
     const data = await stockApi(`/api/shorts/schedule/capacity?${params}`);
     const compact = data.days.map(day=>`<span>${new Date(day.date+'T12:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})}: <strong>${day.available} vagas</strong></span>`).join('');
     if($('#shortsCapacity')) $('#shortsCapacity').innerHTML = compact;
@@ -647,6 +660,8 @@ function openShortSchedulePanel(){
   const tomorrow = new Date(Date.now()+86400000);
   if(!$('#shortScheduleDate').value) $('#shortScheduleDate').value = tomorrow.toISOString().slice(0,10);
   $('#shortScheduleCount').textContent = shortsState.selected.size;
+  if($('#shortSchedulePerDay') && !$('#shortSchedulePerDay').value) $('#shortSchedulePerDay').value = '1';
+  if($('#shortSchedulePerDayLabel')) $('#shortSchedulePerDayLabel').textContent = shortPerDay();
   $('#shortSchedulePreview').innerHTML = '';
   $('#shortScheduleConfirmBox').classList.add('hidden');
   shortsState.preview = null;
@@ -664,14 +679,14 @@ async function previewShortSchedule(){
   try{
     const data = await stockApi('/api/shorts/schedule/preview',{
       method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({videoIds:ids,startDate})
+      body:JSON.stringify({videoIds:ids,startDate,perDay:shortPerDay()})
     });
     shortsState.preview = data.items;
     const grouped = {};
     data.items.forEach(item=>(grouped[item.scheduledDate] ||= []).push(item));
     $('#shortSchedulePreview').innerHTML = Object.entries(grouped).map(([day,rows])=>`
       <div class="short-preview-day">
-        <header><strong>${new Date(day+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'long'})}</strong><span>${rows.length}/${data.maxPerDay}</span></header>
+        <header><strong>${new Date(day+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'long'})}</strong><span>${rows.length}/${data.perDay||data.maxPerDay}</span></header>
         ${rows.map((item,index)=>`<div><b>${escapeHtml(item.scheduledSlot)}</b><span>${escapeHtml(item.title)}</span></div>`).join('')}
       </div>`).join('');
     $('#shortScheduleConfirmBox').classList.remove('hidden');
@@ -689,7 +704,7 @@ async function confirmShortSchedule(){
   try{
     const data = await stockApi('/api/shorts/schedule/confirm',{
       method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({videoIds:ids,startDate:$('#shortScheduleDate').value})
+      body:JSON.stringify({videoIds:ids,startDate:$('#shortScheduleDate').value,perDay:shortPerDay()})
     });
     const ok = data.items.filter(v=>v.ok).length;
     const failed = data.items.length-ok;
@@ -789,6 +804,7 @@ $('#shortPreviewSchedule')?.addEventListener('click',previewShortSchedule);
 $('#shortConfirmSchedule')?.addEventListener('click',confirmShortSchedule);
 $('#shortCloseSchedule')?.addEventListener('click',()=>$('#shortSchedulePanel')?.classList.add('hidden'));
 $('#shortScheduleDate')?.addEventListener('change',()=>{shortsState.preview=null;$('#shortSchedulePreview').innerHTML='';$('#shortScheduleConfirmBox').classList.add('hidden');loadShortsCapacity()});
+$('#shortSchedulePerDay')?.addEventListener('change',()=>{if($('#shortSchedulePerDayLabel'))$('#shortSchedulePerDayLabel').textContent=shortPerDay();shortsState.preview=null;$('#shortSchedulePreview').innerHTML='';$('#shortScheduleConfirmBox').classList.add('hidden');loadShortsCapacity()});
 $('#shortsRefresh')?.addEventListener('click',()=>{loadShortsView();loadShortsCapacity();loadShortStock()});
 $('#shortsSearch')?.addEventListener('input',loadShortsView);
 $('#shortsSort')?.addEventListener('change',loadShortsView);
