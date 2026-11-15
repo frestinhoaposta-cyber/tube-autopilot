@@ -16,6 +16,10 @@ Copie `.env.example` para `.env` e preencha as credenciais. Depois:
 npm run dev
 ```
 
+Para executar agendamentos, comentários e edição automática, configure a persistência PostgreSQL e mantenha outro terminal com `npm run worker`. O servidor web não executa essas tarefas. O modo JSON local é mantido para desenvolvimento HTTP e testes, e não admite o worker independente.
+
+A adaptação para Render, a migração segura e os comandos de backup/restauração estão em [docs/render.md](docs/render.md). O Blueprint contém somente web gratuito; o worker fica separado no código para execução externa opcional. Comentários e tarefas locais só avançam enquanto esse processo estiver ligado. Nenhum recurso pago será criado e nenhum deploy é feito por estes arquivos.
+
 Abra exatamente:
 
 http://localhost:3000

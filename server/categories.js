@@ -15,20 +15,31 @@ working scripts, hydrogen scripts, steal a brain rot hydrogen, fluxus executor, 
 
 #stealabrainrotscript #robloxstealabrainrot #stealabrainrot #stealabrainrotcodes #robloxstealabrainrotcodes2025 #stealabrainrotcodes2025 #stealabrainrotroblox #robloxstealabrainrotcodes #stealabrainrotworkingcodes #codesforstealabrainrot2025`;
 
+const RANDOM_DESCRIPTION = `🎲 VÍDEOS ALEATÓRIOS TODOS OS DIAS!
+
+🔥 Se você chegou até aqui, deixe seu LIKE, comente e SE INSCREVA no canal para não perder os próximos vídeos!
+🔔 Ative o sininho para receber todas as notificações.
+💬 Marque um amigo que precisa ver isso!
+📲 Compartilhe com quem também vai gostar.
+
+#shorts #shortsviral #short #viral #viralvideo #viralshorts #foryou #fyp #trending #trend #humor #comedia #memes #desafio #curiosidades #entretenimento #melhoresmomentos #top #inscrevase #seinscreva #shortvideo #shortsfeed #foryoupage #parati #brasil #explorar #recomendados #videosaleatorios #conteudoaleatorio #diversao`;
+
 const MAX_SHORTS_PER_DAY = 10;
 const SHORTS_DAILY_SLOTS = ['08:00', '09:30', '10:45', '12:00', '13:30', '15:00', '16:30', '18:00', '19:30', '21:00'];
 const TITLE_HASHTAGS = ' #roblox #script';
 
-function appendTitleHashtags(title) {
+function appendTitleHashtags(title, hashtags = TITLE_HASHTAGS) {
   const base = String(title || '').replace(/\s+/g, ' ').trim();
-  const lower = base.toLowerCase();
-  if (lower.includes('#roblox') && lower.includes('#script')) return base.slice(0, 100);
-  const maxBase = 100 - TITLE_HASHTAGS.length;
+  const suffix = String(hashtags || '').trimEnd();
+  const tags = suffix.trim().split(/\s+/).filter(Boolean);
+  const words = new Set(base.toLowerCase().split(/\s+/));
+  if (tags.length && tags.every(tag => words.has(tag.toLowerCase()))) return base.slice(0, 100);
+  const maxBase = Math.max(0, 100 - suffix.length);
   const sliced = base.length > maxBase ? base.slice(0, maxBase).replace(/\s+$/, '') : base;
-  return (sliced + TITLE_HASHTAGS).slice(0, 100);
+  return (sliced + suffix).slice(0, 100);
 }
 
-const categoriesConfig = {
+const categoryDefaults = {
   brainrot: {
     id: 'brainrot',
     name: 'Roube um Brainrot',
@@ -67,8 +78,39 @@ const categoriesConfig = {
     emojis: ['🥚','🔥','⚡','🏆'], hooks: ['NOVO SCRIPT','MELHOR SCRIPT','NOVO HACK','SCRIPT FUNCIONANDO'], terms: ['STEAL A EGG','STEAL A EGG SCRIPT','STEAL A EGG ROBLOX'], benefits: ['SEM KEY','MOBILE E PC','AUTO FARM','AUTO COLLECT','TODOS OS OVOS','SPAWN EGG','LINK DIRETO','GRÁTIS','ATUALIZADO'], complements: ['2026','AGORA','ROBLOX 2026','GRÁTIS 2026'],
     longTitleTemplates: ['🥚 NOVO SCRIPT STEAL A EGG 2026','🔥 MELHOR HACK STEAL A EGG FUNCIONANDO','⚡ SCRIPT STEAL A EGG AUTO FARM 2026'], shortTitleTemplates: ['🥚 SCRIPT STEAL A EGG #shorts','🔥 NOVO HACK STEAL A EGG 2026 #shorts'],
     autoComment: { enabled: true, text: '🥚 Esse script de Steal a Egg funciona muito bem! Testem e me digam nos comentários quantos ovos conseguiram roubar!' }
+  },
+  random: {
+    id: 'random', name: 'Vídeos Aleatórios', emoji: '🎲', youtubeCategoryId: '24', youtubeCategoryName: 'Entretenimento',
+    description: RANDOM_DESCRIPTION,
+    titleHashtags: ' #shorts #shortsviral #short',
+    tags: ['shorts','shortsviral','short','viral','viralvideo','viralshorts','foryou','fyp','trending','trend','humor','comedia','memes','entretenimento','curiosidades','desafio','melhores momentos','se inscreva','inscreva-se','videos aleatorios'],
+    titleEmojis: ['🔥','🚀','🎲','😂','💥','👑','⚡','🎯','❤️','👀','🤯','😱'],
+    titlePhrases: [
+      'SE INSCREVA NO CANAL',
+      'SE INSCREVA NO CANAL E ATIVA O SININHO',
+      'NÃO ESQUEÇA DE SE INSCREVER',
+      'CURTA E SE INSCREVA NO CANAL',
+      'COMENTE E SE INSCREVA',
+      'COMPARTILHE E SE INSCREVA',
+      'VOCÊ JÁ SE INSCREVEU?',
+      'APOIE O CANAL SE INSCREVENDO',
+      'DEIXE SEU LIKE E SE INSCREVA',
+      'SE INSCREVA PRA MAIS VÍDEOS',
+      'ATIVA O SININHO E SE INSCREVA',
+      'FAÇA PARTE DO CANAL, SE INSCREVA',
+      'SE INSCREVA E RECEBA NOVIDADES',
+      'ENTRE NO CANAL, SE INSCREVA',
+      'GOSTOU? SE INSCREVA NO CANAL',
+      'NÃO PERCA OS PRÓXIMOS VÍDEOS: SE INSCREVA'
+    ],
+    titleExtras: ['', ' AGORA', ' | DEIXE SEU COMENTÁRIO', ' | COMPARTILHE COM AMIGOS', ' | TOQUE NO JOINHA', ' | NOVIDADES TODOS OS DIAS', ' | VÍDEOS NOVOS TODA SEMANA', ' | AJUDE O CANAL A CRESCER'],
+    autoComment: { enabled: true, text: '🔥 Gostou? Deixe seu like, comente e se inscreva no canal pra mais vídeos aleatórios!' }
   }
 };
+
+const categoriesConfig = new Proxy(categoryDefaults, {
+  get(target, key) { return require('./persistence').categoryView(target)[key]; }
+});
 
 const templates = [
   (e, h, t, b, c) => `${e} ${h} ${t} ${b} ${c}`,
@@ -87,8 +129,22 @@ function hash(value) {
 
 function normalizeTitle(title) { return String(title || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[🔥🧠🏆😍🤩💪🚀⚡😱💀🎯📱🌊🌲]/gu, '').replace(/[^a-z0-9]+/g, ' ').trim().replace(/\s+/g, ' '); }
 
+function generateSubscribeTitle(config, seed, usedTitles = []) {
+  const used = new Set(usedTitles.map(normalizeTitle));
+  const emojis = Array.isArray(config.titleEmojis) && config.titleEmojis.length ? config.titleEmojis : config.emojis;
+  const extras = Array.isArray(config.titleExtras) && config.titleExtras.length ? config.titleExtras : [''];
+  for (let attempt = 0; attempt < 1000; attempt += 1) {
+    const value = hash(`${seed}:${attempt}`);
+    const pick = (list, shift) => list[(value + attempt * (shift + 3)) % list.length];
+    const title = appendTitleHashtags(`${pick(emojis, 1)} ${pick(config.titlePhrases, 2)}${pick(extras, 3)}`, config.titleHashtags);
+    if (!used.has(normalizeTitle(title))) return title;
+  }
+  throw new Error('Não foi possível criar outro título único para esta categoria.');
+}
+
 function generateTitle(categoryId, seed, usedTitles = []) {
   const config = categoriesConfig[categoryId] || categoriesConfig.brainrot;
+  if (Array.isArray(config.titlePhrases) && config.titlePhrases.length) return generateSubscribeTitle(config, seed, usedTitles);
   const used = new Set(usedTitles.map(v => normalizeTitle(v)));
   for (let attempt = 0; attempt < 500; attempt += 1) {
     const value = hash(`${seed}:${attempt}`);
@@ -106,6 +162,7 @@ function generateTitle(categoryId, seed, usedTitles = []) {
 
 function generateShortTitle(categoryId, seed, usedTitles = []) {
   const config = categoriesConfig[categoryId] || categoriesConfig.brainrot;
+  if (Array.isArray(config.titlePhrases) && config.titlePhrases.length) return generateSubscribeTitle(config, seed, usedTitles);
   const shortTemplates = Array.isArray(config.shortTitleTemplates) ? config.shortTitleTemplates.filter(Boolean) : [];
   const used = new Set(usedTitles.map(normalizeTitle));
   for (let attempt = 0; attempt < 500; attempt += 1) {
@@ -116,14 +173,14 @@ function generateShortTitle(categoryId, seed, usedTitles = []) {
       const benefit = config.benefits[hash(`${seed}:benefit:${attempt}`) % config.benefits.length];
       base = `${template.replace(/#shorts/ig, '').trim()} ${benefit} #shorts ${attempt + 1}`;
     }
-    const title = appendTitleHashtags(String(base).replace(/#roblox|#script/gi, '').replace(/\s+/g, ' ').trim());
+    const title = appendTitleHashtags(String(base).replace(/#roblox|#script/gi, '').replace(/\s+/g, ' ').trim(), config.titleHashtags);
     if (!used.has(normalizeTitle(title))) return title;
   }
   throw new Error('Não foi possível criar outro título Short único para esta categoria.');
 }
 
 function publicCategories() {
-  return Object.values(categoriesConfig).map(({ emojis, hooks, terms, benefits, complements, ...category }) => category);
+  return Object.values(categoriesConfig).map(({ emojis, hooks, terms, benefits, complements, titleEmojis, titlePhrases, titleExtras, titleHashtags, ...category }) => category);
 }
 
 function buildYoutubeSnippet(metadata, options = {}) {

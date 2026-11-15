@@ -3,14 +3,14 @@ const path = require('path');
 const { google } = require('googleapis');
 const { getAccount } = require('./oauth-store');
 const { categoriesConfig } = require('./categories');
+const persistence = require('./persistence');
 
-const dataDir = path.join(__dirname, '..', 'data');
+const dataDir = persistence.dataDir;
 const settingsPath = process.env.COMMENT_SETTINGS_PATH ? path.resolve(process.env.COMMENT_SETTINGS_PATH) : path.join(dataDir, 'comment-settings.json');
 const MAX_COMMENT_ATTEMPTS = 5;
 if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
-if (!fs.existsSync(settingsPath)) fs.writeFileSync(settingsPath, JSON.stringify({ enabled: false, text: '', categories: {}, channels: {} }, null, 2));
-function readSettings() { try { return JSON.parse(fs.readFileSync(settingsPath, 'utf8')); } catch { return { enabled: false, text: '', categories: {}, channels: {} }; } }
-function saveSettings(value) { fs.writeFileSync(settingsPath, JSON.stringify(value, null, 2), 'utf8'); return value; }
+function readSettings() { return persistence.readDocument(settingsPath, { enabled: false, text: '', categories: {}, channels: {} }); }
+function saveSettings(value) { persistence.writeDocument(settingsPath, value); return value; }
 function channelConfigFor(item) {
   const settings = readSettings(); const channels = settings.channels || {};
   const account = item.accountId ? getAccount(item.accountId) : null;
@@ -36,6 +36,8 @@ function resolveComment(item) {
   return { enabled: settings.enabled === true, text: String(settings.text || '') };
 }
 function markPending(item) {
+  if (item.youtubeCommentId) { item.commentStatus = 'POSTED'; return item; }
+  if (['POSTED', 'POSTING', 'RECONCILING', 'REVIEW_REQUIRED'].includes(item.commentStatus)) return item;
   // Vídeos sem conta OAuth vinculada nunca conseguirão postar comentário.
   if (!item.userId || !item.accountId) {
     item.autoCommentEnabled = false; item.commentText = '';
@@ -58,8 +60,24 @@ function apiError(error) {
 }
 async function postComment({ auth, item }) {
   const youtube = google.youtube({ version: 'v3', auth });
-  const response = await youtube.commentThreads.insert({ part: ['snippet'], requestBody: { snippet: { videoId: item.youtubeVideoId, topLevelComment: { snippet: { textOriginal: item.commentText } } } } });
-  return response.data.id;
+  const response = await youtube.commentThreads.insert({ part: ['snippet'], requestBody: { snippet: { videoId: item.youtubeVideoId, topLevelComment: { snippet: { textOriginal: item.commentText } } } } }, { retry: false, timeout: 60000 });
+  return response.data.snippet?.topLevelComment?.id || response.data.id;
+}
+async function reconcileComment({ auth, item, youtube = google.youtube({ version: 'v3', auth }) }) {
+  const text = String(item.commentAttemptText || item.commentText || '').replace(/\r\n/g, '\n').trim();
+  const channelId = item.commentAttemptChannelId || item.channelId;
+  if (!text || !channelId) return null;
+  let pageToken;
+  do {
+    const response = await youtube.commentThreads.list({ part: ['snippet'], videoId: item.youtubeVideoId, maxResults: 100, textFormat: 'plainText', pageToken });
+    for (const thread of response.data.items || []) {
+      const comment = thread.snippet?.topLevelComment;
+      const snippet = comment?.snippet;
+      if (snippet?.authorChannelId?.value === channelId && String(snippet.textOriginal || snippet.textDisplay || '').replace(/\r\n/g, '\n').trim() === text) return comment.id || thread.id;
+    }
+    pageToken = response.data.nextPageToken;
+  } while (pageToken);
+  return null;
 }
 function reevaluateComments(items) {
   let changed = false;
@@ -76,4 +94,4 @@ function reevaluateComments(items) {
   }
   return changed;
 }
-module.exports = { MAX_COMMENT_ATTEMPTS, readSettings, saveSettings, markPending, postComment, apiError, reevaluateComments };
+module.exports = { MAX_COMMENT_ATTEMPTS, readSettings, saveSettings, markPending, postComment, reconcileComment, apiError, reevaluateComments };

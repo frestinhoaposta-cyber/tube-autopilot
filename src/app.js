@@ -2,11 +2,12 @@ const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const storeKey = 'tube-autopilot-jobs';
 const defaultJobs = [];
+const editorState = { settings: null, jobs: [], stats: null, timer: null, busy: false, previewId: null, loading: false };
 let authState = { connected: false, configured: false, channel: null, accounts: [], defaultAccountId: null, user: null };
 
 function jobs(){try{return JSON.parse(localStorage.getItem(storeKey))||defaultJobs}catch{return defaultJobs}}
 function saveJobs(v){localStorage.setItem(storeKey,JSON.stringify(v));renderJobs()}
-function go(id){$$('.view').forEach(v=>v.classList.toggle('active',v.id===id));$$('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.view===id));$('.sidebar').classList.remove('open');window.scrollTo({top:0,behavior:'smooth'});history.replaceState(null,'','#'+id)}
+function go(id){$$('.view').forEach(v=>v.classList.toggle('active',v.id===id));$$('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.view===id));$('.sidebar').classList.remove('open');window.scrollTo({top:0,behavior:'smooth'});history.replaceState(null,'','#'+id);if(id==='editor')loadEditorPage();else stopEditorPolling()}
 $$('[data-view]').forEach(b=>b.onclick=()=>go(b.dataset.view));
 $$('[data-go]').forEach(b=>b.onclick=()=>go(b.dataset.go));
 $('#menuBtn').onclick=()=>$('.sidebar').classList.toggle('open');
@@ -44,6 +45,7 @@ async function loadApp(){
   if(location.hash==='#metadata')loadMetadataPage();
   if(location.hash==='#channel')loadChannelPage();
   if(location.hash==='#schedules')loadSchedulesPage();
+  if(location.hash==='#editor')loadEditorPage();
   if(location.hash.startsWith('#tiktok-')){loadTikTokAuth();loadTikTokVideos()}
   await initPlatformHub();
 }
@@ -264,13 +266,14 @@ function renderStock(){
   const selected=selectedStockItems();$('#stockSelectedCount').textContent=selected.length;$('#stockBulkBar').classList.toggle('hidden',!selected.length);$('#stockSelectAll').checked=stockState.items.length>0&&selected.length===stockState.items.length;
   $('#stockList').innerHTML=stockState.items.map(item=>`<article class="stock-item ${item.status==='ERROR'?'has-error':''}">
     <input class="stock-check" type="checkbox" data-id="${item.id}" ${stockState.selected.has(item.id)?'checked':''}>
-    <div class="stock-thumb">▶</div><div class="stock-info"><small>${escapeHtml(item.originalFilename)} · ${item.contentType==='SHORT'?'SHORT':'LONG'}</small><input class="stock-title-input" data-id="${item.id}" value="${escapeHtml(item.title)}" maxlength="100" ${!['AVAILABLE','ERROR'].includes(item.status)?'disabled':''}><div class="stock-meta"><span>Descrição configurada ✓</span><span>${item.tags.length} tags ✓</span><span>Categoria: ${escapeHtml(item.youtubeCategoryName)}</span><span class="status status-${item.status.toLowerCase()}">${stockStatus[item.status]||item.status}</span>${item.error?`<span class="stock-error">${escapeHtml(item.error)}</span>`:''}</div></div>
-    <div class="stock-actions"><button data-action="save" data-id="${item.id}" class="text-btn">Editar</button><button data-action="regenerate" data-id="${item.id}" class="text-btn">Outro título</button><button data-action="send" data-id="${item.id}" class="text-btn" ${item.youtubeVideoId||item.status==='UPLOADING'?'disabled':''}>Enviar agora</button><button data-action="schedule" data-id="${item.id}" class="text-btn" ${item.youtubeVideoId||item.status==='UPLOADING'?'disabled':''}>Agendar</button><button data-action="delete" data-id="${item.id}" class="text-btn danger-text">Excluir</button></div></article>`).join('')||`<div class="empty"><div>▣</div><h3>Estoque vazio</h3><p>${stockState.status==='AVAILABLE'?'Selecione uma categoria e adicione seus vídeos acima.':`Nada por aqui em “${stockStatus[stockState.status]}”.`}</p></div>`;
+    <div class="stock-thumb">▶</div><div class="stock-info"><small>${escapeHtml(item.originalFilename)} · ${item.contentType==='SHORT'?'SHORT':'LONG'}</small><input class="stock-title-input" data-id="${item.id}" value="${escapeHtml(item.title)}" maxlength="100" ${!['AVAILABLE','ERROR'].includes(item.status)?'disabled':''}><div class="stock-meta"><span>Descrição configurada ✓</span><span>${item.tags.length} tags ✓</span><span>Categoria: ${escapeHtml(item.youtubeCategoryName)}</span><span class="status status-${item.status.toLowerCase()}">${stockStatus[item.status]||item.status}</span>${editorStatusPill(item)}${item.error?`<span class="stock-error">${escapeHtml(item.error)}</span>`:''}</div></div>
+    <div class="stock-actions"><button data-action="preview" data-id="${item.id}" data-original="${item.hasEdited?'0':'1'}" class="text-btn" ${item.fileExists||item.editedFileExists?'':'disabled'}>Prévia</button><button data-action="save" data-id="${item.id}" class="text-btn">Editar</button><button data-action="regenerate" data-id="${item.id}" class="text-btn">Outro título</button><button data-action="send" data-id="${item.id}" class="text-btn" ${item.youtubeVideoId||item.status==='UPLOADING'?'disabled':''}>Enviar agora</button><button data-action="schedule" data-id="${item.id}" class="text-btn" ${item.youtubeVideoId||item.status==='UPLOADING'?'disabled':''}>Agendar</button><button data-action="delete" data-id="${item.id}" class="text-btn danger-text">Excluir</button></div></article>`).join('')||`<div class="empty"><div>▣</div><h3>Estoque vazio</h3><p>${stockState.status==='AVAILABLE'?'Selecione uma categoria e adicione seus vídeos acima.':`Nada por aqui em “${stockStatus[stockState.status]}”.`}</p></div>`;
   $$('.stock-check').forEach(el=>el.onchange=()=>{el.checked?stockState.selected.add(el.dataset.id):stockState.selected.delete(el.dataset.id);renderStock()});
-  $$('.stock-actions button').forEach(btn=>btn.onclick=()=>stockAction(btn.dataset.action,btn.dataset.id));
+  $$('.stock-actions button').forEach(btn=>btn.onclick=()=>stockAction(btn.dataset.action,btn.dataset.id,btn.dataset.original));
 }
-async function stockAction(action,id){
+async function stockAction(action,id,original){
   try{
+    if(action==='preview'){openEditorPreview(id,original==='1');return}
     if(action==='save'){const input=$(`.stock-title-input[data-id="${id}"]`);await stockApi(`/api/inventory/${id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({title:input.value})});toast('Título salvo')}
     if(action==='regenerate'){await stockApi(`/api/inventory/${id}/regenerate`,{method:'POST'});toast('Novo título gerado')}
     if(action==='delete'){const item=stockState.items.find(v=>v.id===id);if(item?.status==='SCHEDULED'){toast('Cancele o agendamento antes de excluir.');return}if(item?.status==='UPLOADING'){toast('Este vídeo está sendo enviado e não pode ser excluído agora.');return}if(!confirm('Excluir este vídeo do estoque e do disco?'))return;await stockApi(`/api/inventory/${id}`,{method:'DELETE'});stockState.selected.delete(id);toast('Vídeo excluído')}
@@ -304,7 +307,7 @@ $('#addStockBtn').onclick=async()=>{
   }
   btn.disabled=false;btn.textContent='Adicionar ao estoque';if($('#stockUploadProgress'))$('#stockUploadProgress').style.width='0%';
   if(failed){toast(firstError,8000)}else{
-    const reasons=['DUPLICATE_FILENAME','DUPLICATE_VIDEO'].includes(skippedFiles[0]?.reason)?' já existiam na biblioteca':skippedFiles[0]?.reason?` (${skippedFiles[0].reason})`:'';const skippedMsg=skipped?`; ${skipped} pulado(s)${reasons||` (ex.: ${escapeHtml(skippedFiles[0]?.filename||'')})`}`:'';
+    const reasons=skippedFiles[0]?.reason==='DUPLICATE_VIDEO'?' já existiam na biblioteca':skippedFiles[0]?.reason?` (${skippedFiles[0].reason})`:'';const skippedMsg=skipped?`; ${skipped} pulado(s)${reasons||` (ex.: ${escapeHtml(skippedFiles[0]?.filename||'')})`}`:'';
     toast(`${added} vídeo(s) adicionados com metadados${skippedMsg}${batches.length>1?` (${batches.length} lotes de até 100)`:''}`,8000);$('#stockFiles').value='';$('#stockFileSummary').textContent='Nenhum vídeo selecionado. Arraste os vídeos para a área acima ou clique para escolher.';await loadStock()}
 };
 $('#refreshStockBtn').onclick=loadStock;$('#stockCategory').onchange=loadStock;
@@ -537,10 +540,12 @@ function shortCard(v){
         ${v.accountId?`<span>Canal: ${escapeHtml(v.accountName||v.accountId)}</span>`:''}
         ${v.scheduledAt?`<span>${new Date(v.scheduledAt).toLocaleString('pt-BR')}</span>`:''}
         <span class="status status-${String(v.status||'').toLowerCase()}">${escapeHtml(shortStatusLabel(v))}</span>
+        ${editorStatusPill(v)}
         ${v.error?`<span class="stock-error">${escapeHtml(v.error)}</span>`:''}
       </div>
     </div>
     <div class="stock-actions">
+      <button class="text-btn" data-short-preview="${v.id}" data-original="${v.hasEdited?'0':'1'}" ${v.fileExists||v.editedFileExists?'':'disabled'}>Prévia</button>
       ${v.status==='ERROR'?`<button class="text-btn short-retry" data-id="${v.id}">Tentar novamente</button>`:''}
       ${v.youtubeVideoId?`<a class="text-btn button-link" href="https://youtube.com/shorts/${encodeURIComponent(v.youtubeVideoId)}" target="_blank" rel="noopener noreferrer">Ver no YouTube</a>`:''}
     </div>
@@ -647,6 +652,7 @@ async function loadShortsView(){
         toast(error.message,7000);
       }
     });
+    $$('#shortsList [data-short-preview]').forEach(btn=>btn.onclick=()=>openEditorPreview(btn.dataset.shortPreview,btn.dataset.original==='1'));
     updateShortSelectionUi();
     await loadShortsCapacity();
   }catch(error){
@@ -921,6 +927,116 @@ $('#ttAddBtn')?.addEventListener('click',uploadTikTokFiles);$('#ttRefresh')?.add
 $$('[data-tt-status]').forEach(b=>b.addEventListener('click',()=>{$$('[data-tt-status]').forEach(x=>x.classList.toggle('active',x===b));ttState.status=b.dataset.ttStatus;ttState.selected.clear();renderTikTokList()}));
 $('#ttDisconnect')?.addEventListener('click',async()=>{try{await ttApi('/api/tiktok/logout',{method:'POST'});toast('TikTok desconectado');await loadTikTokAuth()}catch(e){toast(e.message)}});
 $$('[data-view^="tiktok-"]').forEach(b=>b.addEventListener('click',()=>{loadTikTokAuth();loadTikTokVideos()}));
+
+// --- Editor automático --------------------------------------------------------
+function editorStatusPill(item){
+  if(!item) return '';
+  const status=item.editorStatus;
+  const progress=Math.max(0,Math.min(100,Number(item.editorProgress||0)));
+  if(status==='PROCESSING') return `<span class="editor-badge processing">✂ Editando ${progress}%</span>`;
+  if(status==='PENDING') return '<span class="editor-badge pending">✂ Na fila de edição</span>';
+  if(status==='ERROR') return `<span class="editor-badge error" title="${escapeHtml(item.editorError||'')}">✂ Falha na edição</span>`;
+  if(status==='CANCELLED') return '<span class="editor-badge muted">✂ Edição cancelada</span>';
+  if(item.hasEdited||status==='DONE') return '<span class="editor-badge done">✂ Editado</span>';
+  return '';
+}
+function renderEditorStats(){
+  const stats=editorState.stats||{};
+  if($('#editorStats')) $('#editorStats').innerHTML=`<div><span>Total</span><strong>${stats.total??0}</strong></div><div><span>Editados</span><strong>${stats.done??0}</strong></div><div><span>Na fila</span><strong>${stats.pending??0}</strong></div><div><span>Editando</span><strong>${stats.processing??0}</strong></div><div><span>Erros</span><strong>${stats.errors??0}</strong></div>`;
+  if($('#editorStatusTitle')){
+    $('#editorStatusTitle').textContent=stats.processing?`Editando ${stats.processing} vídeo(s)`:stats.pending?`${stats.pending} vídeo(s) na fila`:stats.errors?`${stats.errors} vídeo(s) com erro`:'Tudo em dia';
+    $('#editorStatusHelp').textContent=stats.processing?'O FFmpeg está processando um vídeo. Você pode continuar usando o painel.':'Os vídeos são processados em segundo plano, um por vez.';
+  }
+}
+function editorJobLabel(job){
+  const first=job.items?.find(item=>!item.missing);
+  const count=job.items?.filter(item=>!item.missing).length||0;
+  return { title:first?.title||'Vídeo', extra:count>1?` +${count-1}`:'' };
+}
+function renderEditorJobs(){
+  const box=$('#editorJobs'); if(!box) return;
+  const jobs=editorState.jobs||[];
+  if(!jobs.length){box.innerHTML='<div class="empty"><p>Nenhum trabalho de edição ainda.</p><small>Adicione vídeos ou clique em “Processar biblioteca”.</small></div>';return}
+  box.innerHTML=jobs.map(job=>{
+    const {title,extra}=editorJobLabel(job);
+    const progress=job.status==='DONE'?100:Math.max(0,Math.min(100,Number(job.progress||0)));
+    const statusLabel={PENDING:'Na fila',PROCESSING:'Editando',DONE:'Concluído',ERROR:'Erro',CANCELLED:'Cancelado'}[job.status]||job.status;
+    const settings=[job.settings?.mirror?'espelhado':'',job.settings?.aspectRatio&&job.settings.aspectRatio!=='original'?job.settings.aspectRatio:'',job.settings?.resolution&&job.settings.resolution!=='original'?job.settings.resolution:''].filter(Boolean).join(' · ')||'configuração original';
+    const previews=(job.items||[]).filter(item=>!item.missing&&item.hasEdited).slice(0,6).map(item=>`<button class="text-btn" data-editor-preview="${item.id}" data-original="0">Prévia${(job.items||[]).length>1?` · ${escapeHtml(item.title||'')}`:''}</button>`).join('');
+    return `<article class="queue-item editor-job"><div class="thumb">✂</div><div class="editor-job-info"><strong>${escapeHtml(title)}${extra}</strong><small><span class="editor-job-status ${String(job.status).toLowerCase()}">${statusLabel}</span> · ${escapeHtml(settings)}</small><div class="editor-progress"><span style="width:${progress}%"></span></div>${job.error?`<small class="stock-error">${escapeHtml(job.error)}</small>`:''}</div><div class="editor-job-actions">${previews}${['PENDING','PROCESSING'].includes(job.status)?`<button class="text-btn danger-text" data-editor-cancel="${job.id}">Cancelar</button>`:''}${['ERROR','CANCELLED'].includes(job.status)?`<button class="text-btn" data-editor-retry="${job.id}">Tentar novamente</button>`:''}</div></article>`;
+  }).join('');
+  $$('#editorJobs [data-editor-preview]').forEach(btn=>btn.onclick=()=>openEditorPreview(btn.dataset.editorPreview,false));
+  $$('#editorJobs [data-editor-cancel]').forEach(btn=>btn.onclick=async()=>{btn.disabled=true;try{await stockApi(`/api/editor/jobs/${btn.dataset.editorCancel}/cancel`,{method:'POST'});toast('Edição cancelada');await loadEditorJobs()}catch(error){toast(error.message,7000)}finally{btn.disabled=false}});
+  $$('#editorJobs [data-editor-retry]').forEach(btn=>btn.onclick=async()=>{btn.disabled=true;try{await stockApi(`/api/editor/jobs/${btn.dataset.editorRetry}/retry`,{method:'POST'});toast('Edição reenfileirada');await loadEditorJobs()}catch(error){toast(error.message,7000)}finally{btn.disabled=false}});
+}
+async function loadEditorJobs(silent=false){
+  try{
+    const data=await stockApi('/api/editor/jobs');
+    editorState.jobs=data.jobs||[];editorState.stats=data.stats||editorState.stats;
+    renderEditorJobs();renderEditorStats();
+  }catch(error){if(!silent)throw error;}
+}
+async function loadEditorSettings(){
+  const data=await stockApi('/api/editor/settings');
+  editorState.settings=data;editorState.stats=data.stats||editorState.stats;
+  if($('#editorEnabled'))$('#editorEnabled').checked=Boolean(data.enabled);
+  if($('#editorMirror'))$('#editorMirror').checked=Boolean(data.mirror);
+  if($('#editorResolution'))$('#editorResolution').value=data.resolution||'original';
+  if($('#editorAspect'))$('#editorAspect').value=data.aspectRatio||'original';
+  if($('#editorFit'))$('#editorFit').value=data.fit||'cover';
+  if($('#editorPreset'))$('#editorPreset').value=data.preset||'veryfast';
+  const ready=Boolean(data.ffmpegAvailable&&data.ffprobeAvailable);
+  if($('#editorAvailability')){$('#editorAvailability').textContent=ready?'FFmpeg disponível':'FFmpeg indisponível';$('#editorAvailability').className=`badge ${ready?'editor-ready':'editor-missing'}`}
+  if($('#editorSettingsHint'))$('#editorSettingsHint').textContent=`Assinatura ${data.signature} · FFmpeg ${data.ffmpegAvailable?'OK':'ausente'} · FFprobe ${data.ffprobeAvailable?'OK':'ausente'}`;
+  renderEditorStats();
+}
+async function loadEditorPage(){
+  if(!$('#editor'))return;
+  if(editorState.loading)return;
+  editorState.loading=true;
+  try{await Promise.all([loadEditorSettings(),loadEditorJobs()]);startEditorPolling()}
+  catch(error){toast(error.message||'Falha ao carregar o editor',7000)}
+  finally{editorState.loading=false}
+}
+function startEditorPolling(){
+  if(editorState.timer)return;
+  editorState.timer=setInterval(()=>{if($('#editor')?.classList.contains('active'))loadEditorJobs(true).catch(()=>{})},3000);
+}
+function stopEditorPolling(){if(editorState.timer){clearInterval(editorState.timer);editorState.timer=null}}
+async function saveEditorSettings(){
+  const btn=$('#editorSave');if(!btn)return;btn.disabled=true;btn.textContent='Salvando...';
+  try{
+    const payload={enabled:$('#editorEnabled').checked,mirror:$('#editorMirror').checked,resolution:$('#editorResolution').value,aspectRatio:$('#editorAspect').value,fit:$('#editorFit').value,preset:$('#editorPreset').value};
+    await stockApi('/api/editor/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    await loadEditorSettings();toast('Configurações do editor salvas');
+  }catch(error){toast(error.message,7000)}
+  finally{btn.disabled=false;btn.textContent='Salvar configurações'}
+}
+async function processEditorLibrary(){
+  const btn=$('#editorProcessLibrary');if(!btn)return;
+  if(!confirm('Processar todos os vídeos disponíveis com as configurações atuais?\n\nOs arquivos originais serão preservados.'))return;
+  btn.disabled=true;const label=btn.textContent;btn.textContent='Enfileirando...';
+  try{
+    const data=await stockApi('/api/editor/process',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({force:false})});
+    toast(`${data.queued} enfileirado(s) · ${data.reused} reaproveitado(s) · ${data.skipped} ignorado(s)`,8000);
+    await loadEditorJobs();
+  }catch(error){toast(error.message,8000)}
+  finally{btn.disabled=false;btn.textContent=label}
+}
+function openEditorPreview(id,original=false){
+  if(!id)return;
+  const item=[...(stockState.items||[]),...(shortsState.items||[])].find(v=>v.id===id);
+  const useOriginal=original||!item?.hasEdited;
+  if($('#editorPreviewTitle'))$('#editorPreviewTitle').textContent=item?.title||item?.originalFilename||'Prévia do vídeo';
+  const video=$('#editorPreviewVideo');
+  if(video){video.src=`/api/editor/preview/${encodeURIComponent(id)}${useOriginal?'?original=1':''}`;video.load()}
+  if($('#editorPreviewHint'))$('#editorPreviewHint').textContent=useOriginal?'Original preservado no disco.':'Versão editada que será enviada ao YouTube.';
+  go('editor');
+  $('#editorPreviewVideo')?.scrollIntoView({behavior:'smooth',block:'center'});
+}
+$('#editorSave')?.addEventListener('click',saveEditorSettings);
+$('#editorProcessLibrary')?.addEventListener('click',processEditorLibrary);
+$('#editorRefresh')?.addEventListener('click',()=>loadEditorPage().catch(error=>toast(error.message,7000)));
 
 // --- Hub multi-plataforma ----------------------------------------------------
 const platformHub = {

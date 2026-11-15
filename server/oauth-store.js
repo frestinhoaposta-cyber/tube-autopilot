@@ -3,8 +3,9 @@ const path = require('path');
 const crypto = require('crypto');
 const { google } = require('googleapis');
 const { hasKey, isEncrypted, encryptToken, decryptToken, encryptAccountTokens, decryptAccountTokens } = require('./token-crypto');
+const persistence = require('./persistence');
 
-const dataDir = path.join(__dirname, '..', 'data');
+const dataDir = persistence.dataDir;
 const storePath = process.env.OAUTH_ACCOUNTS_PATH ? path.resolve(process.env.OAUTH_ACCOUNTS_PATH) : path.join(dataDir, 'oauth-accounts.json');
 const inventoryPath = process.env.INVENTORY_PATH ? path.resolve(process.env.INVENTORY_PATH) : path.join(dataDir, 'inventory.json');
 const verifiedChannels = new Map();
@@ -12,14 +13,12 @@ const CHANNEL_VERIFICATION_TTL_MS = 5 * 60 * 1000;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
-if (!fs.existsSync(storePath)) fs.writeFileSync(storePath, '[]', { encoding: 'utf8', mode: 0o600 });
+if (!persistence.shared() && !fs.existsSync(storePath)) persistence.writeDocument(storePath, []);
 
 function secureFile(filePath) { try { fs.chmodSync(filePath, 0o600); } catch { /* Windows may not implement POSIX modes. */ } }
-function parseJson(filePath, fallback) { try { return JSON.parse(fs.readFileSync(filePath, 'utf8')); } catch { return fallback; } }
+function parseJson(filePath, fallback) { return persistence.readDocument(filePath, fallback); }
 function writeJsonAtomic(filePath, value) {
-  const tmp = `${filePath}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(value, null, 2), { encoding: 'utf8', mode: 0o600 });
-  secureFile(tmp); fs.renameSync(tmp, filePath); secureFile(filePath);
+  persistence.writeDocument(filePath, value);
 }
 
 function readAccounts() { const value = parseJson(storePath, []); return Array.isArray(value) ? value : []; }
@@ -290,9 +289,10 @@ function runDataMigration() {
   console.log(`[migracao] Migração concluída: ${orphanAccountIds.size} canal(is) órfão(s) removido(s).`);
 }
 
-runDataMigration();
+if (!persistence.shared()) runDataMigration();
 
 module.exports = {
+  clientCredentials, hasGoogleConfig,
   storePath, readAccounts, listAccounts, publicAccount,
   saveAccount, getAccount, getDefaultAccountForUser, getAccountByUserAndId,
   setDefaultAccount, removeAccount, markAccountStatus, getAccountAuthStatus,

@@ -29,13 +29,37 @@ test('categoriaId inválida cai para Jogos (20) e título é limitado', () => {
 });
 
 test('títulos gerados terminam com as hashtags e respeitam 100 caracteres', () => {
-  for (const id of Object.keys(categoriesConfig)) {
+  for (const [id, config] of Object.entries(categoriesConfig)) {
+    const expected = String(config.titleHashtags || ' #roblox #script').trim().split(/\s+/);
+    const hasAll = title => {
+      const words = title.toLowerCase().split(/\s+/);
+      for (const tag of expected) assert.ok(words.includes(tag.toLowerCase()), `${id}: título sem ${tag}: ${title}`);
+    };
     const title = generateTitle(id, `seed-${id}`);
     assert.ok(title.length <= 100, `${id}: título com ${title.length} caracteres`);
-    assert.match(title.toLowerCase(), /#roblox/);
-    assert.match(title.toLowerCase(), /#script/);
+    hasAll(title);
     const short = generateShortTitle(id, `seed-${id}`);
     assert.ok(short.length <= 100, `${id}: short com ${short.length} caracteres`);
-    assert.match(short.toLowerCase(), /#roblox/);
+    hasAll(short);
   }
+});
+
+test('categoria Vídeos Aleatórios gera títulos de inscrição e descrição com muitas hashtags', () => {
+  const config = categoriesConfig.random;
+  assert.ok(config, 'categoria random deve existir');
+  const descriptionTags = config.description.match(/#[a-z0-9_]+/gi) || [];
+  assert.ok(descriptionTags.length >= 20, `esperado 20+ hashtags na descrição, veio ${descriptionTags.length}`);
+  for (const tag of ['#shorts', '#shortsviral', '#short']) assert.ok(descriptionTags.includes(tag), `descrição sem ${tag}`);
+
+  const titles = new Set();
+  for (let index = 0; index < 30; index += 1) {
+    const title = generateTitle('random', `random-${index}`);
+    titles.add(title);
+    assert.ok(title.length <= 100, `título com ${title.length} caracteres`);
+    const words = title.toLowerCase().split(/\s+/);
+    for (const tag of ['#shorts', '#shortsviral', '#short']) assert.ok(words.includes(tag), `título sem ${tag}: ${title}`);
+    assert.ok(!words.includes('#roblox') && !words.includes('#script'), `título não deve ter hashtags de script: ${title}`);
+    assert.match(title, /inscrev|inscrito|canal|sininho/i);
+  }
+  assert.ok(titles.size >= 20, `esperado títulos variados, veio ${titles.size}`);
 });

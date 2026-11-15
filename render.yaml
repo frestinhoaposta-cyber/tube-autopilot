@@ -1,0 +1,65 @@
+# Proposta para revisão. Nenhum recurso foi criado ou publicado.
+# Somente web gratuito; worker não declarado porque Render não oferece worker gratuito.
+# A execução de agendamentos exige o processo separado `npm run worker`.
+# PostgreSQL e bucket S3 privados devem existir e ser fornecidos por variáveis secretas.
+previews:
+  generation: off
+services:
+  - type: web
+    name: tube-autopilot-web
+    runtime: node
+    plan: free
+    branch: main
+    autoDeployTrigger: commit
+    buildCommand: npm ci --omit=dev
+    startCommand: node server/server.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "22"
+      - key: PERSISTENCE_DRIVER
+        value: postgres
+      - key: DATA_DIR
+        value: /tmp/tube-autopilot-cache
+      - key: DATABASE_URL
+        sync: false
+      - key: TOKEN_ENCRYPTION_KEY
+        sync: false
+      - key: SESSION_SECRET
+        sync: false
+      - key: S3_BUCKET
+        sync: false
+      - key: S3_REGION
+        sync: false
+      - key: S3_ENDPOINT
+        sync: false
+      - key: S3_FORCE_PATH_STYLE
+        value: "false"
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_PUBLISHABLE_KEY
+        sync: false
+      - key: YOUTUBE_CLIENT_ID
+        sync: false
+      - key: YOUTUBE_CLIENT_SECRET
+        sync: false
+      - key: YOUTUBE_REDIRECT_URI
+        sync: false
+      - key: YOUTUBE_CLIENT_ID_2
+        sync: false
+      - key: YOUTUBE_CLIENT_SECRET_2
+        sync: false
+      - key: YOUTUBE_REDIRECT_URI_2
+        sync: false
+      - key: TIKTOK_CLIENT_KEY
+        sync: false
+      - key: TIKTOK_CLIENT_SECRET
+        sync: false
+      - key: TIKTOK_REDIRECT_URI
+        sync: false

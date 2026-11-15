@@ -3,16 +3,17 @@ const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const persistence = require('./persistence');
 
 module.exports = function createTikTokRouter(){
   const router = express.Router();
   const root = path.join(__dirname,'..');
-  const dataDir = path.join(root,'data');
+  const dataDir = persistence.dataDir;
   const videoDir = path.join(dataDir,'tiktok-videos');
   const invPath = path.join(dataDir,'tiktok-inventory.json');
   const authPath = path.join(dataDir,'tiktok-auth.json');
   fs.mkdirSync(videoDir,{recursive:true});
-  if(!fs.existsSync(invPath)) fs.writeFileSync(invPath,'[]');
+  if(!persistence.shared() && !fs.existsSync(invPath)) persistence.writeDocument(invPath, []);
 
   const upload = multer({
     dest: path.join(dataDir,'.tiktok-upload-tmp'),
@@ -21,8 +22,8 @@ module.exports = function createTikTokRouter(){
   });
   fs.mkdirSync(path.join(dataDir,'.tiktok-upload-tmp'),{recursive:true});
 
-  const readJson=(p,fallback)=>{try{return JSON.parse(fs.readFileSync(p,'utf8'))}catch{return fallback}};
-  const writeJson=(p,v)=>fs.writeFileSync(p,JSON.stringify(v,null,2),'utf8');
+  const readJson=(p,fallback)=>persistence.readDocument(p,fallback);
+  const writeJson=(p,v)=>persistence.writeDocument(p,v);
   const list=()=>readJson(invPath,[]);
   const save=v=>writeJson(invPath,v);
   const cfg=()=>({
@@ -58,6 +59,7 @@ module.exports = function createTikTokRouter(){
   async function creatorInfo(){return (await apiPost('/v2/post/publish/creator_info/query/',{})).data||{};}
 
   async function uploadToTikTok(item){
+    await persistence.checkpoint();
     const full=path.join(videoDir,item.storedName);
     if(!fs.existsSync(full)) throw new Error('Arquivo do vídeo não foi encontrado.');
     const stat=fs.statSync(full); const size=stat.size;
@@ -113,7 +115,7 @@ module.exports = function createTikTokRouter(){
       res.redirect('/?tiktok=success#tiktok-settings');
     }catch(e){console.error('[tiktok oauth]',e);res.redirect('/?tiktok=error#tiktok-settings')}
   });
-  router.post('/logout',(_,res)=>{try{fs.unlinkSync(authPath)}catch{} res.json({ok:true})});
+  router.post('/logout',(_,res)=>{saveAuth(null); res.json({ok:true})});
   router.get('/creator',async(_,res)=>{try{res.json(await creatorInfo())}catch(e){res.status(400).json({error:e.message})}});
 
   router.get('/inventory',(req,res)=>{
@@ -143,6 +145,6 @@ module.exports = function createTikTokRouter(){
 
   let busy=false;
   async function tick(){if(busy)return;busy=true;try{const items=list();const due=items.filter(v=>v.status==='SCHEDULED'&&v.scheduledAt&&new Date(v.scheduledAt)<=new Date()).slice(0,1);for(const row of due){const i=items.findIndex(v=>v.id===row.id);try{items[i].status='UPLOADING';save(items);const out=await uploadToTikTok(items[i]);items[i].status='SUBMITTED';items[i].publishId=out.publishId;items[i].privacyLevel=out.privacy;items[i].submittedAt=new Date().toISOString();items[i].error=null}catch(e){items[i].status='ERROR';items[i].error=e.message}save(items)}}finally{busy=false}}
-  setInterval(tick,30000).unref(); setTimeout(tick,3000).unref();
+  router.processPendingSchedules = tick;
   return router;
 };

@@ -66,7 +66,8 @@
         <button class="nav-item" data-view="generator">✦ <span>Gerar conteúdo</span></button>
         <button class="nav-item" data-view="schedule">◷ <span>Agendamento</span></button>
         <button class="nav-item" data-view="library">▦ <span>Biblioteca</span></button>
-<button class="nav-item" data-view="shorts">📱 <span>Shorts</span></button>
+        <button class="nav-item" data-view="shorts">📱 <span>Shorts</span></button>
+        <button class="nav-item" data-view="editor">✂ <span>Editor Automático</span></button>
         <button class="nav-item" data-view="schedules">📅 <span>Agendamentos</span></button>
         <button class="nav-item" data-view="metadata">📝 <span>Metadados</span></button>
         <button class="nav-item" data-view="channel">📺 <span>Canal</span></button>
@@ -359,6 +360,58 @@
               <span class="pill">STATUS</span>
               <h3 id="shortModeLabel">Envio imediato</h3>
               <p id="shortModeHelp">Selecione os Shorts disponíveis e clique em “Postar agora”.</p>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <section class="view" id="editor">
+        <div class="section-title">
+          <span class="pill">EDITOR</span>
+          <h1>✂ Editor Automático</h1>
+          <p>O arquivo original é preservado. A versão editada é usada automaticamente nos envios e agendamentos.</p>
+        </div>
+        <div class="editor-layout">
+          <div class="editor-main">
+            <div class="panel editor-settings">
+              <div class="panel-head">
+                <h2>Configurações de edição</h2>
+                <span id="editorAvailability" class="badge muted">Verificando FFmpeg...</span>
+              </div>
+              <div class="editor-form">
+                <label class="check"><input id="editorEnabled" type="checkbox"> Ativar edição automática</label>
+                <label class="check"><input id="editorMirror" type="checkbox"> Espelhar vídeo (horizontal)</label>
+                <label>Resolução<select id="editorResolution"><option value="original">Original</option><option value="1080p">1080p</option><option value="720p">720p</option><option value="480p">480p</option></select></label>
+                <label>Proporção<select id="editorAspect"><option value="original">Original</option><option value="9:16">9:16 (vertical)</option><option value="16:9">16:9 (horizontal)</option><option value="1:1">1:1 (quadrado)</option><option value="4:5">4:5 (retrato)</option></select></label>
+                <label>Enquadramento<select id="editorFit"><option value="cover">Preencher (cortar)</option><option value="contain">Conter (barras)</option><option value="stretch">Esticar</option></select></label>
+                <label>Qualidade<select id="editorPreset"><option value="veryfast">Rápida</option><option value="fast">Equilibrada</option><option value="medium">Alta</option></select></label>
+              </div>
+              <div class="editor-actions">
+                <button id="editorSave" class="primary" type="button">Salvar configurações</button>
+                <button id="editorProcessLibrary" class="secondary" type="button">Processar biblioteca</button>
+              </div>
+              <small id="editorSettingsHint" class="muted"></small>
+            </div>
+            <div class="panel">
+              <div class="panel-head">
+                <h2>Fila de edição</h2>
+                <button id="editorRefresh" class="text-btn" type="button">Atualizar</button>
+              </div>
+              <div id="editorJobs" class="queue"><div class="empty"><p>Carregando fila...</p></div></div>
+            </div>
+          </div>
+          <aside class="editor-sidebar">
+            <div class="panel capacity-panel">
+              <span class="pill">PRÉVIA</span>
+              <h3 id="editorPreviewTitle">Nenhum vídeo selecionado</h3>
+              <video id="editorPreviewVideo" controls playsinline class="editor-preview-video"></video>
+              <p id="editorPreviewHint">Escolha um vídeo na biblioteca ou na fila para visualizar.</p>
+            </div>
+            <div class="panel capacity-panel">
+              <span class="pill">STATUS</span>
+              <h3 id="editorStatusTitle">Aguardando</h3>
+              <p id="editorStatusHelp">Os vídeos são processados em segundo plano, um por vez.</p>
+              <div id="editorStats" class="editor-stats"></div>
             </div>
           </aside>
         </div>

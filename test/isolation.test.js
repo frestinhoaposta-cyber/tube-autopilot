@@ -15,6 +15,9 @@ fs.writeFileSync(inventoryPath, '[]');
 
 process.env.OAUTH_ACCOUNTS_PATH = accountsPath;
 process.env.INVENTORY_PATH = inventoryPath;
+process.env.EDITED_VIDEOS_DIR = path.join(tempRoot, 'edited');
+process.env.EDITOR_SETTINGS_PATH = path.join(tempRoot, 'editor-settings.json');
+process.env.EDITOR_JOBS_PATH = path.join(tempRoot, 'editor-jobs.json');
 process.env.TOKEN_ENCRYPTION_KEY = 'a'.repeat(64);
 process.env.YOUTUBE_CLIENT_ID = 'iso-client';
 process.env.YOUTUBE_CLIENT_SECRET = 'iso-secret';
@@ -393,7 +396,7 @@ test('10.3.1 — copia vídeos entre canais do mesmo usuário sem perder o origi
   }
 });
 
-test('10.3.2 — importação ignora arquivos repetidos', async () => {
+test('10.3.2 — importação ignora arquivos repetidos, mas aceita nome igual com conteúdo diferente', async () => {
   fs.writeFileSync(inventoryPath, '[]');
   const createdPaths = [];
   try {
@@ -417,13 +420,15 @@ test('10.3.2 — importação ignora arquivos repetidos', async () => {
     const nameResponse = await fetch(`${base()}/api/inventory`, { method: 'POST', headers: withCookie(cookieA), body: sameName });
     assert.equal(nameResponse.status, 201);
     const nameBody = await nameResponse.json();
-    assert.equal(nameBody.added, 0);
-    assert.equal(nameBody.skippedFiles[0].reason, 'DUPLICATE_FILENAME');
+    assert.equal(nameBody.added, 1);
+    assert.equal(nameBody.skipped, 0);
 
     const stored = JSON.parse(fs.readFileSync(inventoryPath, 'utf8'));
-    assert.equal(stored.length, 1);
-    createdPaths.push(stored[0].filePath);
-    assert.equal(fs.existsSync(stored[0].filePath), true);
+    assert.equal(stored.length, 2);
+    assert.equal(new Set(stored.map(row => row.originalFilename)).size, 1);
+    assert.equal(new Set(stored.map(row => row.fileHash)).size, 2);
+    stored.forEach(row => createdPaths.push(row.filePath));
+    stored.forEach(row => assert.equal(fs.existsSync(row.filePath), true));
   } finally {
     createdPaths.forEach(filePath => fs.rmSync(filePath, { force: true }));
   }

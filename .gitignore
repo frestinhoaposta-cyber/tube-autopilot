@@ -15,3 +15,5 @@ data/
 *.log
 *.tmp
 *.bak
+*.enc
+*.sha256

@@ -3,18 +3,21 @@ const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const persistence = require('./persistence');
 const { google } = require('googleapis');
 const { categoriesConfig, generateTitle, generateShortTitle, normalizeTitle, publicCategories, buildYoutubeSnippet, MAX_SHORTS_PER_DAY, SHORTS_DAILY_SLOTS } = require('./categories');
-const { MAX_COMMENT_ATTEMPTS, readSettings, saveSettings, markPending, postComment, apiError, reevaluateComments } = require('./comments');
+const { MAX_COMMENT_ATTEMPTS, readSettings, saveSettings, markPending, postComment, reconcileComment, apiError, reevaluateComments } = require('./comments');
 const { getAccount, getAccountByUserAndId, getAuthenticatedYouTubeClient, getAccountAuthStatus, assertAccountOwnership } = require('./oauth-store');
 
 module.exports = function createInventoryRouter({ oauthClient, hasGoogleConfig }) {
   const router = express.Router();
-  const dataDir = path.join(__dirname, '..', 'data');
+  const dataDir = persistence.dataDir;
   const videosDir = path.join(dataDir, 'videos');
+  const editedDir = process.env.EDITED_VIDEOS_DIR ? path.resolve(process.env.EDITED_VIDEOS_DIR) : path.join(dataDir, 'edited');
   const dbPath = process.env.INVENTORY_PATH ? path.resolve(process.env.INVENTORY_PATH) : path.join(dataDir, 'inventory.json');
   fs.mkdirSync(videosDir, { recursive: true });
-  if (!fs.existsSync(dbPath)) fs.writeFileSync(dbPath, '[]', 'utf8');
+  fs.mkdirSync(editedDir, { recursive: true });
+  if (!persistence.shared() && !fs.existsSync(dbPath)) persistence.writeDocument(dbPath, []);
 
   const storage = multer.diskStorage({
     destination: (_, __, cb) => cb(null, videosDir),
@@ -32,6 +35,7 @@ module.exports = function createInventoryRouter({ oauthClient, hasGoogleConfig }
   let writeQueue = Promise.resolve();
   let shortsScheduleLock = Promise.resolve();
   let commentWorkerBusy = false;
+  let editorService = null;
   // Erros transitórios de comentário (rede, token) voltam a ser tentados
   // automaticamente após este intervalo, se a conta estiver conectada.
   const COMMENT_RETRY_COOLDOWN_MS = 30 * 60 * 1000;
@@ -42,23 +46,45 @@ module.exports = function createInventoryRouter({ oauthClient, hasGoogleConfig }
   let schedulerTimer = null;
   const schedulerLocks = new Set();
   function readItems() {
-    try { return JSON.parse(fs.readFileSync(dbPath, 'utf8')); }
-    catch (error) { console.error('inventory read:', error); return []; }
+    return persistence.readDocument(dbPath, []);
   }
   function saveItems(items) {
-    const payload = JSON.stringify(items, null, 2);
-    writeQueue = writeQueue.then(async () => {
-      const temp = `${dbPath}.tmp`;
-      await fs.promises.writeFile(temp, payload, 'utf8');
-      await fs.promises.rename(temp, dbPath);
+    const snapshot = structuredClone(items);
+    writeQueue = writeQueue.catch(() => {}).then(async () => {
+      persistence.writeDocument(dbPath, snapshot);
+      await persistence.checkpoint();
+    });
+    return writeQueue;
+  }
+  function mutateItems(mutator) {
+    writeQueue = writeQueue.catch(() => {}).then(async () => {
+      const items = readItems();
+      const result = await mutator(items);
+      persistence.writeDocument(dbPath, items);
+      await persistence.checkpoint();
+      return result;
     });
     return writeQueue;
   }
   function physicalPath(item) {
-    const value = String(item.filePath || '');
+    const value = persistence.shared() ? require('./media-store').portableName(item.filePath) : String(item.filePath || '');
     return path.resolve(path.isAbsolute(value) ? value : path.join(videosDir, value));
   }
+  function editedPath(item) {
+    const value = persistence.shared() ? require('./media-store').portableName(item.editedFilePath) : String(item.editedFilePath || '');
+    return value ? path.resolve(path.isAbsolute(value) ? value : path.join(editedDir, value)) : null;
+  }
+  function publishPath(item) {
+    const edited = editedPath(item);
+    return edited && fs.existsSync(edited) ? edited : physicalPath(item);
+  }
   function isFileReferencedByOtherRecords(items, item) { const target = path.resolve(physicalPath(item)); return items.some(other => other.id !== item.id && other.filePath && path.resolve(physicalPath(other)) === target && other.status !== "DELETED"); }
+  function isEditedFileReferencedByOtherRecords(items, item) { const target = editedPath(item); if (!target) return false; return items.some(other => other.id !== item.id && other.editedFilePath && path.resolve(editedPath(other)) === target && other.status !== "DELETED"); }
+  async function removeEditedIfUnreferenced(items, item) {
+    const target = editedPath(item);
+    if (!target || isEditedFileReferencedByOtherRecords(items, item)) return;
+    await fs.promises.unlink(target).catch(error => { if (error.code !== 'ENOENT') throw error; });
+  }
   function scopedByUser(items, userId) {
     return items.filter(v => v.userId === userId || (!v.userId && !v.accountId));
   }
@@ -84,7 +110,26 @@ module.exports = function createInventoryRouter({ oauthClient, hasGoogleConfig }
   }
   function clientItem(item) {
     const account = item.userId && item.accountId ? getAccountByUserAndId(item.userId, item.accountId) : null;
-    return { ...item, accountName: account?.channelTitle || account?.channelId || null, filePath: item.filePath ? path.basename(item.filePath) : null, fileExists: item.filePath ? fs.existsSync(physicalPath(item)) : false };
+    const edited = editedPath(item);
+    const hasEdited = Boolean(edited && fs.existsSync(edited));
+    return {
+      ...item,
+      accountName: account?.channelTitle || account?.channelId || null,
+      filePath: item.filePath ? path.basename(item.filePath) : null,
+      fileExists: item.filePath ? fs.existsSync(physicalPath(item)) : false,
+      editedFilePath: item.editedFilePath ? path.basename(item.editedFilePath) : null,
+      editedFileExists: hasEdited,
+      hasEdited,
+      editorStatus: item.editorStatus || null,
+      editorProgress: Number(item.editorProgress || 0),
+      editorError: item.editorError || null,
+      editorJobId: item.editorJobId || null
+    };
+  }
+  async function enqueueEditor(items) {
+    if (!editorService || !items?.length) return;
+    try { await editorService.enqueueMany(items); }
+    catch (error) { console.error('[editor] falha ao enfileirar:', error); }
   }
   function findVideoById(items, id) {
     console.log(`[inventory] requested id: ${id}`);
@@ -95,7 +140,8 @@ module.exports = function createInventoryRouter({ oauthClient, hasGoogleConfig }
     return item;
   }
   function availableOrThrow(item, allowUploading = false) {
-    const filePath = physicalPath(item);
+    if (['PENDING', 'PROCESSING'].includes(item.editorStatus)) { const error = new Error('A edição automática deste vídeo ainda está em andamento. Aguarde a conclusão para enviar.'); error.status = 409; error.code = 'EDITOR_BUSY'; throw error; }
+    const filePath = publishPath(item);
     if (!fs.existsSync(filePath)) { const error = new Error('O registro existe, mas o arquivo físico não foi encontrado.'); error.status = 410; error.code = 'VIDEO_FILE_MISSING'; throw error; }
     if (!allowUploading && !['AVAILABLE', 'ERROR', 'SCHEDULED'].includes(item.status)) { const error = new Error('Este vídeo já está sendo enviado ou já foi publicado.'); error.status = 409; throw error; }
     if (item.youtubeVideoId) { const error = new Error('Este vídeo já foi enviado e não pode ser enviado duas vezes.'); error.status = 409; throw error; }
@@ -126,7 +172,7 @@ module.exports = function createInventoryRouter({ oauthClient, hasGoogleConfig }
         snippet,
         status: { privacyStatus: publishAt ? 'private' : 'public', ...(publishAt ? { publishAt: new Date(publishAt).toISOString() } : {}), selfDeclaredMadeForKids: false }
       },
-      media: { mimeType: item.mimeType || 'video/*', body: fs.createReadStream(physicalPath(item)) }
+      media: { mimeType: item.editedFilePath ? 'video/mp4' : (item.mimeType || 'video/*'), body: fs.createReadStream(publishPath(item)) }
     });
     try {
       return await youtube.videos.insert(request(buildYoutubeSnippet(item)));
@@ -174,13 +220,34 @@ module.exports = function createInventoryRouter({ oauthClient, hasGoogleConfig }
     return Date.now() - new Date(publishedAt).getTime() < COMMENT_PUBLISH_GRACE_MS;
   }
 
-  async function processComments() {
+  async function processComments({ authenticate = getAuthenticatedYouTubeClient, reconcile = reconcileComment, post = postComment } = {}) {
     if (commentWorkerBusy || !hasGoogleConfig()) return;
     commentWorkerBusy = true;
     try {
       const items = readItems(); 
       for (const item of items) {
         if (!item.youtubeVideoId) continue;
+        if (['POSTING', 'RECONCILING', 'REVIEW_REQUIRED'].includes(item.commentStatus)) {
+          try {
+            const account = getAccountByUserAndId(item.userId, item.accountId);
+            if (!account) continue;
+            item.commentAttemptText = item.commentAttemptText || item.commentText;
+            item.commentAttemptChannelId = item.commentAttemptChannelId || account.channelId;
+            const id = await reconcile({ auth: await authenticate(account), item });
+            if (id) {
+              item.youtubeCommentId = id; item.commentStatus = 'POSTED';
+              item.commentPostedAt = new Date().toISOString(); item.commentError = null;
+            } else {
+              item.commentStatus = 'REVIEW_REQUIRED'; item.commentError = 'COMMENT_OUTCOME_UNKNOWN';
+            }
+            await saveItems(items);
+          } catch (error) {
+            if (error.code === 'PERSISTENCE_CONFLICT') throw error;
+            item.commentStatus = 'RECONCILING'; item.commentError = 'COMMENT_RECONCILIATION_PENDING';
+            await saveItems(items);
+          }
+          continue;
+        }
         if (!item.commentStatus) { markPending(item); await saveItems(items); }
         // Vídeos agendados ainda estão privados até a data de publicação no YouTube.
         // Só postar comentário quando o vídeo estiver realmente público.
@@ -219,6 +286,8 @@ module.exports = function createInventoryRouter({ oauthClient, hasGoogleConfig }
           console.log(`[comment] skip video=${item.id} (sem conta atribuída)`);
           await saveItems(items); continue;
         }
+        item.commentAttemptText = item.commentText;
+        item.commentAttemptChannelId = item.channelId || getAccountByUserAndId(item.userId, item.accountId)?.channelId;
         item.commentStatus = 'POSTING'; item.commentAttemptCount = Number(item.commentAttemptCount || 0) + 1; item.lastCommentAttemptAt = new Date().toISOString();
         await saveItems(items);
         console.log(`[comment] posting video=${item.id}`);
@@ -231,15 +300,20 @@ module.exports = function createInventoryRouter({ oauthClient, hasGoogleConfig }
             await saveItems(items); continue;
           }
           item.accountId = account.accountId;
-          item.youtubeCommentId = await postComment({ auth: await getAuthenticatedYouTubeClient(account), item });
+          const auth = await authenticate(account);
+          const existingId = await reconcile({ auth, item });
+          item.youtubeCommentId = existingId || await post({ auth, item: { ...item, commentText: item.commentAttemptText } });
           item.commentStatus = 'POSTED'; item.commentPostedAt = new Date().toISOString(); item.commentError = null;
           console.log(`[comment] success commentId=${item.youtubeCommentId}`);
         } catch (error) {
+          if (error.code === 'PERSISTENCE_CONFLICT') throw error;
           const normalized = apiError(error);
           // Vídeo recém-publicado pode ainda não estar liberado para comentários:
           // trata COMMENTS_DISABLED como transitório dentro da janela de graça.
           const grace = normalized.code === 'COMMENTS_DISABLED' && publishedWithinGrace(item);
-          item.commentStatus = normalized.permanent && !grace ? (normalized.code === 'COMMENTS_DISABLED' ? 'DISABLED' : 'ERROR') : 'ERROR'; item.commentError = normalized.code || normalized.message;
+          const definitiveRejection = Boolean(error?.response?.status >= 400 && error?.response?.status < 500);
+          item.commentStatus = !definitiveRejection && !normalized.permanent ? 'RECONCILING' : (normalized.permanent && !grace ? (normalized.code === 'COMMENTS_DISABLED' ? 'DISABLED' : 'ERROR') : 'ERROR');
+          item.commentError = normalized.code || 'COMMENT_OUTCOME_UNKNOWN';
         }
         await saveItems(items);
       }
@@ -278,6 +352,11 @@ module.exports = function createInventoryRouter({ oauthClient, hasGoogleConfig }
           continue;
         }
 
+        if (['PENDING', 'PROCESSING'].includes(latest.editorStatus)) {
+          console.log("[scheduler] aguardando edição id=" + latest.id);
+          continue;
+        }
+
         // Compatibilidade com agendamentos locais antigos que ainda não foram
         // enviados ao YouTube.
         const account = latest.accountId ? getAccountByUserAndId(latest.userId, latest.accountId) : null;
@@ -288,7 +367,7 @@ module.exports = function createInventoryRouter({ oauthClient, hasGoogleConfig }
           await saveItems(latestItems);
           continue;
         }
-        if (!fs.existsSync(physicalPath(latest))) {
+        if (!fs.existsSync(publishPath(latest))) {
           latest.status = 'MISSING';
           latest.error = 'VIDEO_FILE_MISSING';
           await saveItems(latestItems);
@@ -326,8 +405,19 @@ module.exports = function createInventoryRouter({ oauthClient, hasGoogleConfig }
   }
   function startScheduler() { if (schedulerTimer) return; console.log('[scheduler] started'); try { const bootItems = readItems(); if (reevaluateComments(bootItems)) { saveItems(bootItems); console.log('[comment] reavaliou comentários desativados no boot'); } } catch (error) { console.error('[scheduler] erro ao reavaliar comentários no boot:', error.message); } schedulerTimer = setInterval(() => processPendingSchedules().catch(() => {}), 60000); schedulerTimer.unref(); processPendingSchedules().catch(() => {}); }
   router.get('/comments/settings', (_, res) => res.json(readSettings()));
-  router.put('/comments/settings', (req, res, next) => { try { const current = readSettings(); const nextValue = { ...current, enabled: req.body.enabled !== undefined ? Boolean(req.body.enabled) : current.enabled, text: req.body.text !== undefined ? String(req.body.text || '').slice(0, 10000) : current.text, categories: req.body.categories || current.categories || {}, channels: req.body.channels || current.channels || {} }; saveSettings(nextValue); const items = readItems(); if (reevaluateComments(items)) { saveItems(items); console.log('[comment] reavaliou comentários após salvar configurações'); } res.json(nextValue); } catch (error) { next(error); } });
-  router.post('/:id([0-9a-fA-F-]+)/comment', async (req, res, next) => { try { const items = readItems(); const item = findVideoById(items, req.params.id); assertOwned(req.session.userId, item); if (!item.youtubeVideoId) throw Object.assign(new Error('O vídeo ainda não possui youtubeVideoId.'), { status: 409 }); if (item.commentStatus === 'POSTED' || item.youtubeCommentId) return res.json(clientItem(item)); item.autoCommentEnabled = true; item.commentText = String(req.body.text || item.commentText || readSettings().text || '').trim(); item.commentStatus = 'PENDING'; await saveItems(items); await processComments(); res.json(clientItem(findVideoById(readItems(), item.id))); } catch (error) { next(error); } });
+  router.put('/comments/settings', async (req, res, next) => { try { const current = readSettings(); const nextValue = { ...current, enabled: req.body.enabled !== undefined ? Boolean(req.body.enabled) : current.enabled, text: req.body.text !== undefined ? String(req.body.text || '').slice(0, 10000) : current.text, categories: req.body.categories || current.categories || {}, channels: req.body.channels || current.channels || {} }; saveSettings(nextValue); const items = readItems(); if (reevaluateComments(items)) await saveItems(items); await persistence.checkpoint(); res.json(nextValue); } catch (error) { next(error); } });
+  router.post('/:id([0-9a-fA-F-]+)/comment', async (req, res, next) => {
+    try {
+      const items = readItems(); const item = findVideoById(items, req.params.id); assertOwned(req.session.userId, item);
+      if (!item.youtubeVideoId) throw Object.assign(new Error('O vídeo ainda não possui youtubeVideoId.'), { status: 409 });
+      if (item.commentStatus === 'POSTED' || item.youtubeCommentId) return res.json(clientItem(item));
+      if (['POSTING', 'RECONCILING', 'REVIEW_REQUIRED'].includes(item.commentStatus)) throw Object.assign(new Error('O resultado da tentativa anterior está em revisão. Confira o comentário no YouTube antes de tentar novamente.'), { status: 409 });
+      item.autoCommentEnabled = true; item.commentText = String(req.body.text || item.commentText || readSettings().text || '').trim();
+      if (!item.commentText) throw Object.assign(new Error('Informe o texto do comentário.'), { status: 400 });
+      item.commentStatus = 'PENDING'; await saveItems(items);
+      res.status(202).json(clientItem(item));
+    } catch (error) { next(error); }
+  });
 
   function localSlotIso(date, slot) { return new Date(`${date}T${slot}:00-03:00`).toISOString(); }
   function dateAfter(date, days) { const value = new Date(`${date}T12:00:00-03:00`); value.setUTCDate(value.getUTCDate() + days); return value.toISOString().slice(0, 10); }
@@ -390,6 +480,11 @@ module.exports = function createInventoryRouter({ oauthClient, hasGoogleConfig }
         const item = {
           id, fileHash: source.fileHash, filename: source.filename, originalFilename: source.originalFilename,
           filePath: source.filePath, mimeType: source.mimeType, size: source.size, sourceInventoryId: source.id,
+          editedFilePath: source.editedFilePath || null, editedSourceHash: source.editedSourceHash || null,
+          editedFileHash: source.editedFileHash || null, editedAt: source.editedAt || null, editedSize: source.editedSize || null,
+          editorStatus: source.editedFilePath ? (source.editorStatus || 'DONE') : null,
+          editorProgress: source.editedFilePath ? 100 : 0, editorError: null, editorJobId: null,
+          editorSettingsSignature: source.editorSettingsSignature || null, editorSettings: source.editorSettings || null,
           category, contentType: 'SHORT', userId: req.session.userId, accountId, channelId: targetAccount.channelId, title, normalizedTitle: normalizeTitle(title), description: config.description,
           tags: config.tags, youtubeCategoryId: config.youtubeCategoryId, youtubeCategoryName: config.youtubeCategoryName,
           status: 'AVAILABLE', createdAt: new Date().toISOString(), scheduledAt: null, scheduledDate: null,
@@ -398,6 +493,7 @@ module.exports = function createInventoryRouter({ oauthClient, hasGoogleConfig }
         items.push(item); created.push(item); existingShortHashes.add(source.fileHash);
       }
       await saveItems(items);
+      await enqueueEditor(created);
       res.status(201).json({ added: created.length, skipped: skipped.length, videos: created.map(clientItem), skippedVideos: skipped });
     } catch (error) { next(error); }
   });
@@ -445,6 +541,7 @@ module.exports = function createInventoryRouter({ oauthClient, hasGoogleConfig }
         }
       }
       await saveItems(items);
+      await enqueueEditor(created);
       res.json({ created: created.map(clientItem), skipped: sourceIds.length * accountIds.length - created.length });
     } catch (error) { next(error); }
   });
@@ -535,24 +632,30 @@ module.exports = function createInventoryRouter({ oauthClient, hasGoogleConfig }
       const contentType = req.baseUrl === "/api/shorts" ? "SHORT" : "LONG";
       const normalizeContentType = value => String(value || "LONG").toUpperCase() === "SHORT" ? "SHORT" : "LONG";
       const accountKey = accountId || '__unassigned__';
-      const existingNames = new Set(current.filter(v => normalizeContentType(v.contentType) === contentType && (v.accountId || '__unassigned__') === accountKey).map(v => String(v.originalFilename || v.filename || "").toLowerCase()));
-      const existingKeys = new Set(current.map(v => String(v.fileHash || "") + ":" + normalizeContentType(v.contentType) + ":" + (v.accountId || '__unassigned__')));
-      const results = await Promise.all(req.files.map(async (file, index) => {
+      // Só bloqueia reenvio enquanto o vídeo ainda está na fila (não publicado).
+      // Itens publicados/excluídos não podem travar novos arquivos com o mesmo conteúdo.
+      const activeStatuses = ['AVAILABLE', 'SCHEDULED', 'UPLOADING', 'ERROR'];
+      const existingKeys = new Set(current.filter(v => activeStatuses.includes(v.status)).map(v => String(v.fileHash || "") + ":" + normalizeContentType(v.contentType) + ":" + (v.accountId || '__unassigned__')));
+      const results = [];
+      // Preservar a ordem de seleção na deduplicação e limitar a memória por vídeo.
+      for (const [index, file] of req.files.entries()) results.push(await (async () => {
         try {
-          const filenameKey = String(file.originalname || "").toLowerCase();
-          if (existingNames.has(filenameKey)) { await fs.promises.unlink(file.path).catch(() => {}); return { skipped: true, reason: "DUPLICATE_FILENAME", filename: file.originalname }; }
+          // Nomes originais iguais não são conflito: o arquivo físico é renomeado
+          // com UUID e o conteúdo real é comparado pelo hash.
           const fileHash = crypto.createHash("sha256").update(await fs.promises.readFile(file.path)).digest("hex");
           const duplicateKey = fileHash + ":" + contentType + ":" + accountKey;
           if (existingKeys.has(duplicateKey)) { await fs.promises.unlink(file.path).catch(() => {}); return { skipped: true, reason: "DUPLICATE_VIDEO", filename: file.originalname }; }
           const sharedSource = current.find(v => v.fileHash === fileHash && normalizeContentType(v.contentType) === contentType && v.filePath && fs.existsSync(physicalPath(v)));
           if (sharedSource) await fs.promises.unlink(file.path).catch(() => {});
-          const id = crypto.randomUUID(); const title = generateTitle(category, file.originalname + ":" + id + ":" + index, used); used.push(title); existingNames.add(filenameKey); existingKeys.add(duplicateKey);
+          const id = crypto.randomUUID(); const title = generateTitle(category, file.originalname + ":" + id + ":" + index, used); used.push(title); existingKeys.add(duplicateKey);
           return { item: { id, fileHash, filename: sharedSource?.filename || file.filename, originalFilename: file.originalname, filePath: sharedSource?.filePath || file.path, mimeType: sharedSource?.mimeType || file.mimetype, size: sharedSource?.size || file.size, category, contentType, userId: req.session.userId, accountId: accountId || null, channelId: targetAccount?.channelId || null, title, normalizedTitle: normalizeTitle(title), description: config.description, tags: config.tags, youtubeCategoryId: config.youtubeCategoryId, youtubeCategoryName: config.youtubeCategoryName, status: "AVAILABLE", createdAt: new Date().toISOString(), scheduledAt: null, scheduledDate: null, scheduledSlot: null, uploadedAt: null, youtubeVideoId: null, error: null } };
         } catch (error) { await fs.promises.unlink(file.path).catch(() => {}); return { skipped: true, reason: error.code || "IMPORT_FAILED", filename: file.originalname, message: error.message }; }
-      }));
+      })());
       const created = results.filter(result => result.item).map(result => result.item);
       const skipped = results.filter(result => result.skipped);
-      await saveItems([...current, ...created]); res.status(201).json({ length: created.length, videos: created.map(clientItem), added: created.length, skipped: skipped.length, skippedFiles: skipped.map(v => ({ filename: v.filename, reason: v.reason })) });
+      await saveItems([...current, ...created]);
+      await enqueueEditor(created);
+      res.status(201).json({ length: created.length, videos: created.map(clientItem), added: created.length, skipped: skipped.length, skippedFiles: skipped.map(v => ({ filename: v.filename, reason: v.reason })) });
     } catch (error) { next(error); }
   });
   router.patch('/:id([0-9a-fA-F-]+)', async (req, res, next) => {
@@ -578,7 +681,7 @@ module.exports = function createInventoryRouter({ oauthClient, hasGoogleConfig }
     } catch (error) { next(error); }
   });
   router.delete('/:id([0-9a-fA-F-]+)', async (req, res, next) => {
-    try { const items = readItems(); const item = findVideoById(items, req.params.id); assertOwned(req.session.userId, item); if (item.status === 'SCHEDULED') throw Object.assign(new Error('Este vídeo está agendado. Cancele o agendamento antes de excluir.'), { status: 409, code: 'VIDEO_SCHEDULED' }); if (item.status === 'UPLOADING') throw Object.assign(new Error('Não é possível excluir durante o envio.'), { status: 409, code: 'VIDEO_UPLOADING' }); if (item.status !== 'PUBLISHED' && !isFileReferencedByOtherRecords(items, item)) await fs.promises.unlink(physicalPath(item)).catch(error => { if (error.code !== 'ENOENT') throw error; }); if (item.status === 'PUBLISHED') { item.status = 'DELETED'; item.filePath = null; item.error = null; await saveItems(items); } else { await saveItems(items.filter(v => v.id !== item.id)); } res.json({ ok: true }); }
+    try { const items = readItems(); const item = findVideoById(items, req.params.id); assertOwned(req.session.userId, item); if (item.status === 'SCHEDULED') throw Object.assign(new Error('Este vídeo está agendado. Cancele o agendamento antes de excluir.'), { status: 409, code: 'VIDEO_SCHEDULED' }); if (item.status === 'UPLOADING') throw Object.assign(new Error('Não é possível excluir durante o envio.'), { status: 409, code: 'VIDEO_UPLOADING' }); await removeEditedIfUnreferenced(items, item); if (item.status !== 'PUBLISHED' && !isFileReferencedByOtherRecords(items, item)) await fs.promises.unlink(physicalPath(item)).catch(error => { if (error.code !== 'ENOENT') throw error; }); if (item.status === 'PUBLISHED') { item.status = 'DELETED'; item.filePath = null; item.editedFilePath = null; item.error = null; await saveItems(items); } else { await saveItems(items.filter(v => v.id !== item.id)); } res.json({ ok: true }); }
     catch (error) { next(error); }
   });
   // Keep shared Library/Short files until the last inventory reference is removed.
@@ -592,6 +695,7 @@ module.exports = function createInventoryRouter({ oauthClient, hasGoogleConfig }
       for (const item of selected) {
         const shared = remaining.some(other => other.filePath && path.resolve(physicalPath(other)) === path.resolve(physicalPath(item)) && other.status !== 'DELETED');
         if (!shared && item.status !== 'PUBLISHED') await fs.promises.unlink(physicalPath(item)).catch(error => { if (error.code !== 'ENOENT') throw error; });
+        await removeEditedIfUnreferenced(remaining, item);
       }
       await saveItems(remaining); res.json({ ok: true, deleted: selected.length });
     } catch (error) { next(error); }
@@ -662,16 +766,28 @@ module.exports = function createInventoryRouter({ oauthClient, hasGoogleConfig }
         created.push(copy);
       }
       await saveItems(items);
+      await enqueueEditor(created);
       res.status(201).json({ created: created.map(clientItem), skipped });
     } catch (error) { next(error); }
   });
   router.post('/actions/delete-legacy-unused', async (req, res, next) => {
-    try { const ids = new Set(req.body.ids || []); const items = readItems(); const selected = items.filter(v => ids.has(v.id) && v.userId === req.session.userId); const selectedIdSet = new Set(selected.map(v => v.id)); if (selected.some(v => v.status === 'UPLOADING')) throw Object.assign(new Error('Há vídeo sendo enviado na seleção.'), { status: 409 }); await Promise.all(selected.map(v => fs.promises.unlink(v.filePath).catch(() => {}))); await saveItems(items.filter(v => !selectedIdSet.has(v.id))); res.json({ ok: true, deleted: selected.length }); }
+    try {
+      const ids = new Set(req.body.ids || []); const items = readItems();
+      const selected = items.filter(v => ids.has(v.id) && v.userId === req.session.userId);
+      const selectedIdSet = new Set(selected.map(v => v.id));
+      if (selected.some(v => v.status === 'UPLOADING')) throw Object.assign(new Error('Há vídeo sendo enviado na seleção.'), { status: 409 });
+      const retained = items.filter(v => !selectedIdSet.has(v.id));
+      for (const item of selected) {
+        if (item.filePath && !isFileReferencedByOtherRecords(retained, item)) await fs.promises.unlink(physicalPath(item)).catch(error => { if (error.code !== 'ENOENT') throw error; });
+        await removeEditedIfUnreferenced(retained, item);
+      }
+      await saveItems(retained); res.json({ ok: true, deleted: selected.length });
+    }
     catch (error) { next(error); }
   });
   router.post('/:id([0-9a-fA-F-]+)/cancel-schedule', async (req, res, next) => { try { const items = readItems(); const item = findVideoById(items, req.params.id); assertOwned(req.session.userId, item); if (item.status !== 'SCHEDULED') throw Object.assign(new Error('Somente vídeos agendados podem ser cancelados.'), { status: 409 }); item.status = 'AVAILABLE'; item.scheduledAt = null; item.scheduledDate = null; item.scheduledSlot = null; await saveItems(items); res.json(clientItem(item)); } catch (error) { next(error); } });
   router.post('/:id([0-9a-fA-F-]+)/upload', async (req, res, next) => {
-    try { const items = readItems(); const item = findVideoById(items, req.params.id); assertOwned(req.session.userId, item); const result = await uploadOne(req, item, req.body.publishAt || null); await processComments(); res.json(clientItem(result)); }
+    try { const items = readItems(); const item = findVideoById(items, req.params.id); assertOwned(req.session.userId, item); const result = await uploadOne(req, item, req.body.publishAt || null); res.json(clientItem(result)); }
     catch (error) { next(Object.assign(error, { message: userError(error) })); }
   });
   router.post('/actions/upload', async (req, res, next) => {
@@ -690,5 +806,11 @@ module.exports = function createInventoryRouter({ oauthClient, hasGoogleConfig }
 
   router.use((error, req, res, next) => { console.error('inventory:', error); if (error.code === 'VIDEO_NOT_FOUND') return res.status(404).json({ error: 'VIDEO_NOT_FOUND', message: error.message, requestedId: error.requestedId }); if (error.code === 'VIDEO_FILE_MISSING') return res.status(410).json({ error: 'VIDEO_FILE_MISSING', message: error.message }); return res.status(error.status || 400).json({ error: userError(error) }); });
   router.startScheduler = startScheduler; router.processPendingSchedules = processPendingSchedules;
+  router.processComments = processComments;
+  router.recoverComments = async () => { const items = readItems(); if (reevaluateComments(items)) await saveItems(items); };
+  router.stopScheduler = () => { if (schedulerTimer) clearInterval(schedulerTimer); schedulerTimer = null; };
+  router.setEditor = service => { editorService = service; };
+  router.getEditor = () => editorService;
+  router.store = { readItems, saveItems, mutateItems, physicalPath, editedPath, publishPath, editedDir, videosDir, dbPath, clientItem, assertOwned, findVideoById, scopedByUser };
   return router;
 };

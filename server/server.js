@@ -5,10 +5,14 @@ const { google } = require('googleapis');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const metadataPath = path.join(__dirname, '..', 'data', 'metadata-overrides.json');
 const crypto = require('crypto');
 require('dotenv').config();
+const persistence = require('./persistence');
+persistence.validateEnvironment();
+const metadataStore = require('./metadata');
+if (!persistence.shared()) metadataStore.refresh();
 const createInventoryRouter = require('./inventory');
+const { createEditorService, createEditorRouter } = require('./editor');
 const createTikTokRouter = require('./tiktok');
 const { categoriesConfig, generateTitle, buildYoutubeSnippet } = require('./categories');
 const { saveAccount, getAccount, getAccountsByUserId, getDefaultAccountForUser, getAccountByUserAndId, assertAccountOwnership, setDefaultAccount, removeAccount, getAuthenticatedYouTubeClient } = require('./oauth-store');
@@ -30,13 +34,23 @@ const upload = multer({
 
 app.use(express.json({ limit: '12mb' }));
 app.use(express.urlencoded({ extended: true }));
+app.set('trust proxy', 1);
+app.use(express.static(path.join(__dirname, '..', 'src')));
+app.get('/api/health', async (_, res) => {
+  try {
+    if (persistence.shared()) await persistence.loadState();
+    res.json({ ok: true, googleConfigured: hasGoogleConfig() });
+  } catch { res.status(503).json({ ok: false }); }
+});
+const sessionStore = persistence.shared() ? new (require('connect-pg-simple')(session))({ pool: persistence.getPool(), tableName: 'autopilot_sessions', createTableIfMissing: false }) : undefined;
 app.use(session({
   secret: process.env.SESSION_SECRET || 'dev-change-this-secret',
   resave: false,
   saveUninitialized: false,
-  cookie: { httpOnly: true, sameSite: 'lax', secure: false, maxAge: 7 * 24 * 60 * 60 * 1000 }
+  store: sessionStore,
+  cookie: { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', maxAge: 7 * 24 * 60 * 60 * 1000 }
 }));
-app.use(express.static(path.join(__dirname, '..', 'src')));
+app.use(persistence.middleware);
 
 function googleConfig(index) {
   if (Number(index) > 1) {
@@ -251,13 +265,15 @@ app.delete('/api/auth/accounts/:accountId', requireAuth, ownAccountOr404, async 
 });
 
 const inventoryRouter = createInventoryRouter({ oauthClient, hasGoogleConfig });
+const editorService = createEditorService({ inventory: inventoryRouter.store, executeJobs: false });
+inventoryRouter.setEditor(editorService);
 app.use('/api/inventory', requireAuth, inventoryRouter);
 app.use('/api/shorts', requireAuth, inventoryRouter);
-inventoryRouter.startScheduler();
+app.use('/api/editor', requireAuth, createEditorRouter({ editor: editorService, inventory: inventoryRouter.store }));
 app.use('/api/tiktok', createTikTokRouter());
 
-app.get('/api/metadata', (_, res) => { const overrides = fs.existsSync(metadataPath) ? JSON.parse(fs.readFileSync(metadataPath, 'utf8')) : {}; res.json(Object.values(categoriesConfig).map(c => ({ ...c, ...(overrides[c.id] || {}) }))); });
-app.put('/api/metadata/:categoryId', (req, res) => { const id = String(req.params.categoryId); const base = categoriesConfig[id]; if (!base) return res.status(404).json({ error: 'Categoria inválida.' }); const body = req.body || {}; if (body.description !== undefined && typeof body.description !== 'string') return res.status(400).json({ error: 'description deve ser string.' }); if (body.tags !== undefined && !Array.isArray(body.tags)) return res.status(400).json({ error: 'tags deve ser array.' }); if (body.youtubeCategoryId !== undefined && typeof body.youtubeCategoryId !== 'string') return res.status(400).json({ error: 'youtubeCategoryId deve ser string.' }); const overrides = fs.existsSync(metadataPath) ? JSON.parse(fs.readFileSync(metadataPath, 'utf8')) : {}; overrides[id] = { ...(overrides[id] || {}), ...Object.fromEntries(['description','tags','youtubeCategoryId','longTitleTemplates','shortTitleTemplates','autoComment'].filter(k => body[k] !== undefined).map(k => [k, body[k]])) }; fs.writeFileSync(metadataPath, JSON.stringify(overrides, null, 2), 'utf8'); Object.assign(base, overrides[id]); res.json({ ...base }); });
+app.get('/api/metadata', (_, res) => { const overrides = metadataStore.read(); res.json(Object.values(categoriesConfig).map(c => ({ ...c, ...(overrides[c.id] || {}) }))); });
+app.put('/api/metadata/:categoryId', (req, res) => { const id = String(req.params.categoryId); const base = categoriesConfig[id]; if (!base) return res.status(404).json({ error: 'Categoria inválida.' }); const body = req.body || {}; if (body.description !== undefined && typeof body.description !== 'string') return res.status(400).json({ error: 'description deve ser string.' }); if (body.tags !== undefined && !Array.isArray(body.tags)) return res.status(400).json({ error: 'tags deve ser array.' }); if (body.youtubeCategoryId !== undefined && typeof body.youtubeCategoryId !== 'string') return res.status(400).json({ error: 'youtubeCategoryId deve ser string.' }); const overrides = metadataStore.read(); overrides[id] = { ...(overrides[id] || {}), ...Object.fromEntries(['description','tags','youtubeCategoryId','longTitleTemplates','shortTitleTemplates','autoComment'].filter(k => body[k] !== undefined).map(k => [k, body[k]])) }; metadataStore.save(overrides); Object.assign(base, overrides[id]); res.json({ ...base }); });
 
 app.post('/api/generate', (req, res) => {
   const categoryId = String(req.body?.categoryId || 'brainrot');
@@ -400,3 +416,18 @@ app.get('*', (_, res) => res.sendFile(path.join(__dirname, '..', 'src', 'index.h
 const httpServer = app.listen(PORT, () => console.log(`Tube AutoPilot v2 rodando em http://localhost:${PORT}`));
 
 module.exports = { app, server: httpServer };
+
+if (require.main === module) {
+  let closing = false;
+  const shutdown = () => {
+    if (closing) return;
+    closing = true;
+    const deadline = setTimeout(() => process.exit(1), 115000);
+    httpServer.close(async () => {
+      if (sessionStore) sessionStore.close();
+      await persistence.close();
+      clearTimeout(deadline);
+    });
+  };
+  process.once('SIGTERM', shutdown); process.once('SIGINT', shutdown);
+}
