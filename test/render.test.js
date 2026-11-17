@@ -23,7 +23,7 @@ const createInventoryRouter = require('../server/inventory');
 const { acquireLeadership, startWorker } = require('../server/worker');
 const { categoriesConfig } = require('../server/categories');
 let sql;
-const query = (...args) => args.length === 1 && args[0].startsWith('CREATE TABLE') ? sql.exec(args[0]).then(results => results.at(-1)) : sql.query(...args);
+const query = (...args) => args.length === 1 && /^CREATE (?:SCHEMA|TABLE)\b/.test(args[0]) ? sql.exec(args[0]).then(results => results.at(-1)) : sql.query(...args);
 const database = { query, connect: async () => ({ query, release() {} }) };
 const initial = {
   'inventory.json': [], 'oauth-accounts.json': [], 'metadata-overrides.json': {}, 'comment-settings.json': {},
@@ -32,18 +32,34 @@ const initial = {
 };
 before(async () => { sql = new PGlite(); await sql.exec(fs.readFileSync(path.join(__dirname, '../server/schema.sql'), 'utf8')); });
 beforeEach(async () => {
-  await sql.query('TRUNCATE autopilot_documents');
-  for (const [name, value] of Object.entries(initial)) await sql.query('INSERT INTO autopilot_documents(name,payload) VALUES($1,$2)', [name, persistence.encode(value)]);
+  await sql.query('TRUNCATE tube_autopilot.autopilot_documents');
+  for (const [name, value] of Object.entries(initial)) await sql.query('INSERT INTO tube_autopilot.autopilot_documents(name,payload) VALUES($1,$2)', [name, persistence.encode(value)]);
 });
 after(async () => { await sql.close(); fs.rmSync(root, { recursive: true, force: true }); });
 const scope = fn => persistence.runInContext(fn, { database, media: false });
+
+test('schema.sql cria as tabelas apenas em tube_autopilot', async () => {
+  const result = await sql.query("SELECT table_schema, table_name FROM information_schema.tables WHERE table_name IN ('autopilot_documents', 'autopilot_sessions') ORDER BY table_schema, table_name");
+  assert.deepEqual(result.rows, [
+    { table_schema: 'tube_autopilot', table_name: 'autopilot_documents' },
+    { table_schema: 'tube_autopilot', table_name: 'autopilot_sessions' }
+  ]);
+  assert.equal(persistence.schema, 'tube_autopilot');
+});
+
+test('consultas compartilhadas não usam tabela sem schema', () => {
+  for (const file of ['persistence.js', 'backup-shared.js', 'restore-shared.js', 'migrate-shared.js']) {
+    const source = fs.readFileSync(path.join(__dirname, '../server', file), 'utf8');
+    assert.doesNotMatch(source, /\b(?:FROM|INTO|UPDATE)\s+autopilot_documents\b/i, file);
+  }
+});
 
 test('PostgreSQL confirma documentos criptografados e outro contexto lê a alteração', async () => {
   await scope(async () => {
     persistence.writeDocument('oauth-accounts.json', [{ accountId: 'conta', refreshToken: 'segredo-de-teste' }]);
     await persistence.checkpoint();
   });
-  const raw = (await sql.query('SELECT payload FROM autopilot_documents WHERE name=$1', ['oauth-accounts.json'])).rows[0].payload;
+  const raw = (await sql.query('SELECT payload FROM tube_autopilot.autopilot_documents WHERE name=$1', ['oauth-accounts.json'])).rows[0].payload;
   assert.ok(!raw.includes('segredo-de-teste'));
   assert.match(raw, /^enc:gcm:/);
   await scope(() => assert.equal(persistence.readDocument('oauth-accounts.json', [])[0].accountId, 'conta'));
@@ -112,7 +128,7 @@ function sourceFixture(name) {
 }
 
 test('migração preserva originais, contas órfãs, vínculo por canal e backup verificável', async () => {
-  await sql.query('TRUNCATE autopilot_documents');
+  await sql.query('TRUNCATE tube_autopilot.autopilot_documents');
   const source = sourceFixture('migracao');
   const original = fs.readFileSync(path.join(source, 'oauth-accounts.json'));
   const objects = new Map();
@@ -140,11 +156,11 @@ test('migração preserva originais, contas órfãs, vínculo por canal e backup
 test('sessão e estado OAuth sobrevivem à substituição do processo web', async () => {
   const session = require('express-session');
   const Store = require('connect-pg-simple')(session);
-  const first = new Store({ pool: database, tableName: 'autopilot_sessions', pruneSessionInterval: false });
+  const first = new Store({ pool: database, schemaName: persistence.schema, tableName: 'autopilot_sessions', pruneSessionInterval: false });
   const saved = { userId: 'usuario-persistido', cookie: { maxAge: 60000 }, googleOauth: { state: 'estado-da-tentativa', credentialSet: 2 } };
   await new Promise((resolve, reject) => first.set('sessao-teste', saved, error => error ? reject(error) : resolve()));
   first.close();
-  const next = new Store({ pool: database, tableName: 'autopilot_sessions', pruneSessionInterval: false });
+  const next = new Store({ pool: database, schemaName: persistence.schema, tableName: 'autopilot_sessions', pruneSessionInterval: false });
   try {
     const restored = await new Promise((resolve, reject) => next.get('sessao-teste', (error, value) => error ? reject(error) : resolve(value)));
     assert.equal(restored.userId, 'usuario-persistido');
@@ -163,12 +179,12 @@ test('migração rejeita JSON inválido e chave incorreta sem substituir dados p
 });
 
 test('falha de upload reverte a migração e preserva backup e originais', async () => {
-  await sql.query('TRUNCATE autopilot_documents');
+  await sql.query('TRUNCATE tube_autopilot.autopilot_documents');
   const source = sourceFixture('upload-interrompido');
   const original = fs.readFileSync(path.join(source, 'inventory.json'));
   const backupDir = path.join(root, 'backup-interrompido');
   await assert.rejects(backupAndImport({ source, backupDir, database, upload: async () => { throw new Error('Upload interrompido.'); } }), /Upload interrompido/);
-  assert.equal((await query('SELECT name FROM autopilot_documents')).rows.length, 0);
+  assert.equal((await query('SELECT name FROM tube_autopilot.autopilot_documents')).rows.length, 0);
   assert.deepEqual(fs.readFileSync(path.join(source, 'inventory.json')), original);
   assert.equal(fs.readdirSync(backupDir).filter(name => name.endsWith('.enc')).length, 1);
 });
@@ -177,7 +193,7 @@ test('backup de produção restaura em banco vazio e rejeita checksum adulterado
   const file = path.join(root, 'export.enc');
   await scope(() => persistence.writeDocument('oauth-accounts.json', [{ channelId: 'canal', refreshToken: 'token-restaurado' }]));
   await exportBackup({ destination: file, database });
-  await sql.query('TRUNCATE autopilot_documents');
+  await sql.query('TRUNCATE tube_autopilot.autopilot_documents');
   assert.equal(await restoreBackup({ file, database }), 10);
   await scope(() => assert.equal(persistence.readDocument('oauth-accounts.json', [])[0].refreshToken, 'token-restaurado'));
   fs.appendFileSync(file, 'adulterado');
@@ -266,7 +282,7 @@ test('worker independente publica estado agendado e encerra liberando liderança
   try {
     let status;
     for (let attempt = 0; attempt < 100; attempt++) {
-      const result = await query('SELECT payload FROM autopilot_documents WHERE name=$1', ['inventory.json']);
+      const result = await query('SELECT payload FROM tube_autopilot.autopilot_documents WHERE name=$1', ['inventory.json']);
       status = persistence.decode(result.rows[0].payload)[0].status;
       if (status === 'PUBLISHED') break;
       await new Promise(resolve => setTimeout(resolve, 20));

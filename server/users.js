@@ -1,5 +1,10 @@
+const crypto = require('node:crypto');
 const { createClient } = require('@supabase/supabase-js');
 
+const AUTH_MODE = process.env.AUTH_MODE === 'single' ? 'single' : 'supabase';
+const SINGLE_USER_ID = String(process.env.SINGLE_USER_ID || '').trim();
+const SINGLE_USER_EMAIL = String(process.env.SINGLE_USER_EMAIL || 'administrador').trim();
+const PANEL_PASSWORD = String(process.env.PANEL_PASSWORD || '');
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_PUBLISHABLE_KEY = process.env.SUPABASE_PUBLISHABLE_KEY;
 
@@ -41,4 +46,29 @@ async function signIn({ email, password }) {
   return { id: data.user.id, email: data.user.email };
 }
 
-module.exports = { isSupabaseConfigured, signUp, signIn };
+function isSingleUserConfigured() {
+  return AUTH_MODE === 'single' && Boolean(SINGLE_USER_ID) && PANEL_PASSWORD.length >= 12;
+}
+
+function validateSingleUserAuthentication() {
+  if (AUTH_MODE !== 'single') return;
+  if (!SINGLE_USER_ID) throw new Error('Configuração obrigatória ausente: SINGLE_USER_ID.');
+  if (PANEL_PASSWORD.length < 12) throw new Error('PANEL_PASSWORD deve conter ao menos 12 caracteres.');
+}
+
+function authConfig() {
+  return { mode: AUTH_MODE, registrationEnabled: AUTH_MODE !== 'single', email: AUTH_MODE === 'single' ? SINGLE_USER_EMAIL : null };
+}
+
+function verifySingleUserPassword(password) {
+  if (!isSingleUserConfigured()) return false;
+  const actual = Buffer.from(String(password));
+  const expected = Buffer.from(PANEL_PASSWORD);
+  return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
+}
+
+function singleUser() {
+  return { id: SINGLE_USER_ID, email: SINGLE_USER_EMAIL };
+}
+
+module.exports = { authMode: AUTH_MODE, isSupabaseConfigured, signUp, signIn, isSingleUserConfigured, validateSingleUserAuthentication, authConfig, verifySingleUserPassword, singleUser };

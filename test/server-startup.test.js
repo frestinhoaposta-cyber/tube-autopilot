@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const net = require('node:net');
+const crypto = require('node:crypto');
 const { spawn } = require('node:child_process');
 const { once } = require('node:events');
 
@@ -57,6 +58,68 @@ test('node server/server.js inicia, serve o site e responde health sem iniciar w
   } finally {
     if (child.exitCode === null && child.signalCode === null) child.kill();
     await exited;
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('painel single-user usa userId original e não depende de Supabase', { timeout: 20000 }, async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tube-single-'));
+  const port = await freePort();
+  const panelPassword = crypto.randomBytes(24).toString('hex');
+  const env = {
+    ...environment(root, port),
+    AUTH_MODE: 'single',
+    SINGLE_USER_ID: 'usuario-original',
+    SINGLE_USER_EMAIL: 'dono@local.test',
+    PANEL_PASSWORD: panelPassword
+  };
+  const child = spawn(process.execPath, [entry], { cwd: root, env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+  const exited = once(child, 'exit');
+  let output = '';
+  child.stdout.on('data', chunk => { output += chunk; });
+  child.stderr.on('data', chunk => { output += chunk; });
+  const base = `http://127.0.0.1:${port}`;
+  try {
+    let health;
+    for (let attempt = 0; attempt < 120; attempt++) {
+      if (child.exitCode !== null) assert.fail(`Servidor encerrou antes de iniciar: ${output}`);
+      try { health = await fetch(`${base}/api/health`, { signal: AbortSignal.timeout(1000) }); if (health.ok) break; } catch {}
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+    assert.equal(health?.status, 200, output);
+    assert.deepEqual(await (await fetch(`${base}/api/auth/mode`)).json(), { mode: 'single', registrationEnabled: false, email: 'dono@local.test' });
+    const register = await fetch(`${base}/api/auth/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'outro@local.test', password: panelPassword }) });
+    assert.equal(register.status, 403);
+    const wrong = await fetch(`${base}/api/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'qualquer@local.test', password: `${panelPassword}-invalida` }) });
+    assert.equal(wrong.status, 401);
+    const login = await fetch(`${base}/api/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'qualquer@local.test', password: panelPassword }) });
+    assert.equal(login.status, 200);
+    const user = { id: 'usuario-original', email: 'dono@local.test' };
+    assert.deepEqual((await login.json()).user, user);
+    const cookie = (login.headers.get('set-cookie') || '').split(';')[0];
+    assert.match(cookie, /^connect\.sid=/);
+    assert.deepEqual((await (await fetch(`${base}/api/auth/session`, { headers: { Cookie: cookie } })).json()).user, user);
+    const status = await (await fetch(`${base}/api/auth/status`, { headers: { Cookie: cookie } })).text();
+    assert.doesNotMatch(status, /refreshToken|accessToken|enc:gcm:/);
+  } finally {
+    if (child.exitCode === null && child.signalCode === null) child.kill();
+    await exited;
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('modo single-user recusa inicialização sem identificação do usuário', { timeout: 15000 }, async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tube-single-invalid-'));
+  const env = { ...environment(root, 0), AUTH_MODE: 'single', PANEL_PASSWORD: crypto.randomBytes(24).toString('hex') };
+  const child = spawn(process.execPath, [entry], { cwd: root, env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+  let output = '';
+  child.stdout.on('data', chunk => { output += chunk; }); child.stderr.on('data', chunk => { output += chunk; });
+  try {
+    const [code] = await once(child, 'exit');
+    assert.notEqual(code, 0);
+    assert.match(output, /SINGLE_USER_ID/);
+  } finally {
+    if (child.exitCode === null && child.signalCode === null) child.kill();
     fs.rmSync(root, { recursive: true, force: true });
   }
 });

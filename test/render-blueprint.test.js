@@ -10,6 +10,16 @@ test('Blueprint do projeto contém somente web gratuito com execução na main',
   assert.doesNotThrow(() => assertFreeBlueprint(read()));
 });
 
+test('Blueprint configura painel single-user e storage S3 gratuito', () => {
+  const web = read().services[0];
+  const env = Object.fromEntries(web.envVars.map(variable => [variable.key, variable]));
+  assert.equal(env.AUTH_MODE.value, 'single');
+  assert.equal(env.SINGLE_USER_ID.sync, false);
+  assert.equal(env.PANEL_PASSWORD.sync, false);
+  assert.equal(env.S3_FORCE_PATH_STYLE.value, 'true');
+  assert.ok(!('SUPABASE_URL' in env));
+});
+
 test('validação rejeita worker e plano omitido que poderia assumir custo', () => {
   const withWorker = read();
   withWorker.services.push({ type: 'worker', plan: 'free' });

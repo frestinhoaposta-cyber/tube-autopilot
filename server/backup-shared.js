@@ -5,7 +5,7 @@ const crypto = require('node:crypto');
 const persistence = require('./persistence');
 
 async function exportBackup({ destination, database = persistence.getPool() }) {
-  const result = await database.query('SELECT name, payload, revision FROM autopilot_documents ORDER BY name');
+  const result = await database.query(`SELECT name, payload, revision FROM ${persistence.documentsTable} ORDER BY name`);
   const documents = result.rows.map(row => ({ name: row.name, revision: row.revision, value: persistence.decode(row.payload) }));
   if (!documents.some(value => value.name === '_migration.json')) throw new Error('Banco não migrado.');
   const payload = persistence.encode({ version: 1, createdAt: new Date().toISOString(), documents });

@@ -5,6 +5,8 @@ const { AsyncLocalStorage } = require('node:async_hooks');
 const { encryptToken, decryptToken, isEncrypted } = require('./token-crypto');
 
 const contexts = new AsyncLocalStorage();
+const SCHEMA = 'tube_autopilot';
+const DOCUMENTS_TABLE = `${SCHEMA}.autopilot_documents`;
 const dataDir = path.resolve(process.env.DATA_DIR || path.join(__dirname, '..', 'data'));
 const shared = () => process.env.PERSISTENCE_DRIVER === 'postgres';
 let pool;
@@ -67,7 +69,7 @@ function writeDocument(file, value) {
   return value;
 }
 async function loadState(database = getPool()) {
-  const result = await database.query('SELECT name, payload, revision FROM autopilot_documents');
+  const result = await database.query(`SELECT name, payload, revision FROM ${DOCUMENTS_TABLE}`);
   const documents = new Map();
   const revisions = new Map();
   for (const row of result.rows) { documents.set(row.name, decode(row.payload)); revisions.set(row.name, Number(row.revision)); }
@@ -84,7 +86,7 @@ async function flush(state, database = getPool()) {
   try {
     await client.query('BEGIN');
     for (const name of names) {
-      const result = await client.query('UPDATE autopilot_documents SET payload=$1, revision=revision+1, updated_at=now() WHERE name=$2 AND revision=$3 RETURNING revision', [encode(values.get(name)), name, state.revisions.get(name)]);
+      const result = await client.query(`UPDATE ${DOCUMENTS_TABLE} SET payload=$1, revision=revision+1, updated_at=now() WHERE name=$2 AND revision=$3 RETURNING revision`, [encode(values.get(name)), name, state.revisions.get(name)]);
       if (result.rowCount !== 1) throw Object.assign(new Error('Os dados foram alterados por outro processo. Atualize a página e tente novamente.'), { status: 409, code: 'PERSISTENCE_CONFLICT' });
     }
     await client.query('COMMIT');
@@ -147,7 +149,7 @@ const middleware = createMiddleware();
 async function close() { if (pool) { await pool.end(); pool = null; } }
 async function readLatestDocument(file, fallback) {
   if (!shared()) return readDocument(file, fallback);
-  const result = await getPool().query('SELECT payload FROM autopilot_documents WHERE name=$1', [documentName(file)]);
+  const result = await getPool().query(`SELECT payload FROM ${DOCUMENTS_TABLE} WHERE name=$1`, [documentName(file)]);
   if (!result.rows.length) throw new Error('Documento compartilhado ausente.');
   return decode(result.rows[0].payload);
 }
@@ -160,4 +162,4 @@ function categoryView(defaults) {
   }
   return state.categories;
 }
-module.exports = { shared, dataDir, getPool, validateEnvironment, readDocument, readLatestDocument, writeDocument, checkpoint, runInContext, middleware, createMiddleware, encode, decode, loadState, flush, close, categoryView };
+module.exports = { shared, dataDir, schema: SCHEMA, documentsTable: DOCUMENTS_TABLE, getPool, validateEnvironment, readDocument, readLatestDocument, writeDocument, checkpoint, runInContext, middleware, createMiddleware, encode, decode, loadState, flush, close, categoryView };
