@@ -8,6 +8,8 @@
     "worker": "node server/worker.js",
     "migrate:shared": "node server/migrate-shared.js",
     "backup:shared": "node server/backup-shared.js",
+    "backup:local": "node scripts/backup-local.js",
+    "verify:backup:local": "node scripts/backup-local.js --verify",
     "restore:shared": "node server/restore-shared.js",
     "validate:render": "node scripts/validate-render.js",
     "test": "node --test --test-concurrency=1"
