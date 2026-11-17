@@ -27,9 +27,9 @@ async function restoreBackup({ file, database = persistence.getPool() }) {
     await client.query('BEGIN');
     await client.query('SELECT pg_advisory_xact_lock(74682019)');
     await client.query(fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8'));
-    const existing = await client.query('SELECT name FROM autopilot_documents LIMIT 1');
+    const existing = await client.query(`SELECT name FROM ${persistence.documentsTable} LIMIT 1`);
     if (existing.rows.length) throw new Error('Restauração exige banco vazio; use um banco separado para validar.');
-    for (const [name, value] of documents) await client.query('INSERT INTO autopilot_documents(name,payload) VALUES ($1,$2)', [name, persistence.encode(value)]);
+    for (const [name, value] of documents) await client.query(`INSERT INTO ${persistence.documentsTable}(name,payload) VALUES ($1,$2)`, [name, persistence.encode(value)]);
     await client.query('COMMIT');
     return documents.size;
   } catch (error) { await client.query('ROLLBACK').catch(() => {}); throw error; }

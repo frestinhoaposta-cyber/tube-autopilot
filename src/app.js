@@ -1065,5 +1065,16 @@ async function initPlatformHub(){
   const remembered=sessionStorage.getItem('tube-autopilot-platform');
   if(remembered==='tiktok')platformHub.select('tiktok');else if(remembered==='youtube')platformHub.select('youtube');else platformHub.open();
 }
-
-initAuth();
+async function loadAuthMode(){
+  try{
+    const config=await (await fetch('/api/auth/mode')).json();
+    if(config.mode!=='single')return;
+    $$('.login-tab').forEach(tab=>{if(tab.dataset.loginTab==='register')tab.classList.add('hidden')});
+    setLoginTab('login');
+    const email=$('#loginEmail');
+    if(email){email.value=config.email||'administrador';email.readOnly=true}
+    const submit=$('#loginSubmit');
+    if(submit)submit.textContent='Entrar';
+  }catch{}
+}
+loadAuthMode().then(initAuth);

@@ -9,6 +9,8 @@ const crypto = require('crypto');
 require('dotenv').config();
 const persistence = require('./persistence');
 persistence.validateEnvironment();
+const users = require('./users');
+users.validateSingleUserAuthentication();
 const metadataStore = require('./metadata');
 if (!persistence.shared()) metadataStore.refresh();
 const createInventoryRouter = require('./inventory');
@@ -16,7 +18,7 @@ const { createEditorService, createEditorRouter } = require('./editor');
 const createTikTokRouter = require('./tiktok');
 const { categoriesConfig, generateTitle, buildYoutubeSnippet } = require('./categories');
 const { saveAccount, getAccount, getAccountsByUserId, getDefaultAccountForUser, getAccountByUserAndId, assertAccountOwnership, setDefaultAccount, removeAccount, getAuthenticatedYouTubeClient } = require('./oauth-store');
-const { isSupabaseConfigured, signUp, signIn } = require('./users');
+const { isSupabaseConfigured, signUp, signIn } = users;
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
@@ -42,7 +44,7 @@ app.get('/api/health', async (_, res) => {
     res.json({ ok: true, googleConfigured: hasGoogleConfig() });
   } catch { res.status(503).json({ ok: false }); }
 });
-const sessionStore = persistence.shared() ? new (require('connect-pg-simple')(session))({ pool: persistence.getPool(), tableName: 'autopilot_sessions', createTableIfMissing: false }) : undefined;
+const sessionStore = persistence.shared() ? new (require('connect-pg-simple')(session))({ pool: persistence.getPool(), schemaName: persistence.schema, tableName: 'autopilot_sessions', createTableIfMissing: false }) : undefined;
 app.use(session({
   secret: process.env.SESSION_SECRET || 'dev-change-this-secret',
   resave: false,
@@ -102,7 +104,10 @@ app.get('/api/auth/status', requireAuth, (req, res) => {
 
 app.get('/api/auth/accounts', requireAuth, (req, res) => res.json(getAccountsByUserId(req.session.userId)));
 
+app.get('/api/auth/mode', (_, res) => res.json(users.authConfig()));
+
 app.post('/api/auth/register', async (req, res) => {
+  if (users.authMode === 'single') return res.status(403).json({ error: 'Cadastro desabilitado neste painel.' });
   if (!isSupabaseConfigured()) return res.status(503).json({ error: 'Autenticação não configurada no servidor.' });
   const email = String(req.body?.email || '').trim();
   const password = String(req.body?.password || '');
@@ -122,9 +127,20 @@ app.post('/api/auth/register', async (req, res) => {
 });
 
 app.post('/api/auth/login', async (req, res) => {
+  const password = String(req.body?.password || '');
+  if (users.authMode === 'single') {
+    if (!users.isSingleUserConfigured()) return res.status(503).json({ error: 'Autenticação não configurada no servidor.' });
+    if (!password || !users.verifySingleUserPassword(password)) return res.status(401).json({ error: 'Senha inválida.' });
+    const user = users.singleUser();
+    return req.session.regenerate((err) => {
+      if (err) return res.status(500).json({ error: 'Não foi possível iniciar a sessão.' });
+      req.session.userId = user.id;
+      req.session.userEmail = user.email;
+      res.json({ user });
+    });
+  }
   if (!isSupabaseConfigured()) return res.status(503).json({ error: 'Autenticação não configurada no servidor.' });
   const email = String(req.body?.email || '').trim();
-  const password = String(req.body?.password || '');
   if (!email || !password) return res.status(401).json({ error: 'E-mail ou senha inválidos.' });
   try {
     const user = await signIn({ email, password });
