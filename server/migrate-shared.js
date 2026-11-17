@@ -107,7 +107,7 @@ async function backupAndImport({ source, backupDir, database = persistence.getPo
     await client.query('BEGIN');
     await client.query('SELECT pg_advisory_xact_lock(74682019)');
     await client.query(fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8'));
-    const existing = await client.query('SELECT name FROM autopilot_documents LIMIT 1');
+    const existing = await client.query(`SELECT name FROM ${persistence.documentsTable} LIMIT 1`);
     if (existing.rows.length) throw new Error('Destino já contém dados. A importação não sobrescreve dados existentes.');
     for (const [logical, file] of snapshot.files) {
       const entry = manifest[logical];
@@ -120,7 +120,7 @@ async function backupAndImport({ source, backupDir, database = persistence.getPo
       const currentHash = fs.existsSync(entry.path) ? digest(fs.readFileSync(entry.path)) : null;
       if (currentHash !== entry.sha256) throw new Error('Um documento de origem mudou durante a migração. Mantenha os processos antigos parados.');
     }
-    for (const [name, value] of snapshot.documents) await client.query('INSERT INTO autopilot_documents(name,payload) VALUES ($1,$2)', [name, persistence.encode(value)]);
+    for (const [name, value] of snapshot.documents) await client.query(`INSERT INTO ${persistence.documentsTable}(name,payload) VALUES ($1,$2)`, [name, persistence.encode(value)]);
     await client.query('COMMIT');
     return { backupFile, documents: snapshot.documents.size, videos: snapshot.files.size };
   } catch (error) { await client.query('ROLLBACK').catch(() => {}); throw error; }

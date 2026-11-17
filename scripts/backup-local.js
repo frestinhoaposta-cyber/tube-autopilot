@@ -168,7 +168,7 @@ Se o manifesto listar arquivos em \`extras/\`, restaure-os nos caminhos indicado
 
 - Mantenha o \`.env\` original: \`TOKEN_ENCRYPTION_KEY\` descriptografa os tokens em \`data/oauth-accounts.json\`; sem a mesma chave as contas entram como \`RECONNECT_REQUIRED\`.
 - \`YOUTUBE_CLIENT_ID\`/\`YOUTUBE_CLIENT_SECRET\` (e o par \`_2\`) precisam ser os mesmos projetos do Google Cloud. \`TIKTOK_CLIENT_KEY\`/\`TIKTOK_CLIENT_SECRET\` devem ser do mesmo app TikTok.
-- \`SESSION_SECRET\` e as variáveis \`SUPABASE_*\` precisam corresponder ao projeto de autenticação usado, pois \`userId\` está vinculado a ele.
+- \`SESSION_SECRET\` precisa ser preservado. No modo single-user, \`SINGLE_USER_ID\` deve ser o mesmo \`userId\` dos canais; no modo multi-usuário, as variáveis \`SUPABASE_*\` precisam corresponder ao projeto de autenticação usado.
 - Se o domínio mudou, ajuste os redirect URIs no \`.env\` **e** nos consoles Google/TikTok.
 
 ## Depois de restaurar

@@ -29,21 +29,26 @@ services:
         sync: false
       - key: SESSION_SECRET
         sync: false
+      - key: AUTH_MODE
+        value: single
+      - key: SINGLE_USER_ID
+        sync: false
+      - key: SINGLE_USER_EMAIL
+        value: administrador
+      - key: PANEL_PASSWORD
+        sync: false
       - key: S3_BUCKET
         sync: false
       - key: S3_REGION
         sync: false
       - key: S3_ENDPOINT
         sync: false
+      # R2/B2 exigem path-style; AWS usa endpoint vazio e false.
       - key: S3_FORCE_PATH_STYLE
-        value: "false"
+        value: "true"
       - key: AWS_ACCESS_KEY_ID
         sync: false
       - key: AWS_SECRET_ACCESS_KEY
-        sync: false
-      - key: SUPABASE_URL
-        sync: false
-      - key: SUPABASE_PUBLISHABLE_KEY
         sync: false
       - key: YOUTUBE_CLIENT_ID
         sync: false

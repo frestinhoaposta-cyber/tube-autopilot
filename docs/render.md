@@ -16,6 +16,14 @@ A alternativa preparada para esta etapa é web gratuito mais worker externo opci
 
 O banco e o bucket privados também precisam existir externamente. A aplicação aceita PostgreSQL e armazenamento compatível com S3, sem exigir que sejam do Render. Não assumir que todo serviço externo é gratuito: verificar limites de espaço, tráfego, suspensão e cobrança antes de escolher. Para evitar contratação nesta etapa, usar recursos existentes ou manter somente a configuração preparada. O PostgreSQL gratuito do Render expira em 30 dias e não deve ser a única cópia de dados importantes. Nenhum banco gratuito temporário é criado pelo Blueprint.
 
+## Schema exclusivo, usuário único e storage dos vídeos
+
+O código usa exclusivamente o schema `tube_autopilot` para `autopilot_documents` e `autopilot_sessions`. `schema.sql` cria o schema antes das tabelas, a persistência qualifica todas as consultas e a loja de sessões usa `schemaName: 'tube_autopilot'`. Nenhuma tabela é criada ou consultada no schema `public`. O nome do schema é constante no código, sem variável de ambiente, para impedir que uma configuração acidental aponte para outro projeto. Nenhum schema/dado existente foi alterado ou migrado nesta etapa.
+
+O painel do Render usa `AUTH_MODE=single`. Nesse modo, o login compara apenas `PANEL_PASSWORD` em tempo constante e abre a sessão com `SINGLE_USER_ID`, que deve ser exatamente o `userId` já associado aos canais, inventário e tokens OAuth. Assim não é necessário migrar titularidade. Cadastro é desabilitado, `SUPABASE_URL`/`SUPABASE_PUBLISHABLE_KEY` não são necessários e o modo multi-usuário original continua disponível com `AUTH_MODE=supabase`.
+
+O acervo validado tem 3,41 GB (1.069 arquivos). O File Storage gratuito do Supabase tem 1 GB e limite de 50 MB por upload, e o web gratuito do Render tem filesystem efêmero: nenhum dos dois comporta esse acervo. A opção recomendada é Cloudflare R2 Free (10 GB/mês, compatível com S3 e sem cobrança de egress), com `S3_ENDPOINT=https://<ACCOUNT_ID>.r2.cloudflarestorage.com`, `S3_REGION=auto` e `S3_FORCE_PATH_STYLE=true`. Alternativa válida é Backblaze B2 (10 GB gratuitos, compatível com S3), com `S3_ENDPOINT=https://s3.<REGIAO>.backblazeb2.com`, região real do bucket e `S3_FORCE_PATH_STYLE=true`. Nenhum bucket foi criado e nenhuma credencial foi exposta.
+
 `npm run validate:render` verifica tanto o schema atual do Render quanto a política deste projeto: somente um web `free`, sem worker, bancos ou discos provisionados pelo arquivo. O site ainda precisa dos segredos e da migração validada antes de uma futura ativação.
 
 ## Processos e armazenamento
@@ -46,8 +54,9 @@ Em ambos os processos:
 - `TOKEN_ENCRYPTION_KEY`: **a mesma chave original**, com 64 caracteres hexadecimais; nunca gerar outra durante migração. Mantenha uma cópia segura fora do banco e do bucket.
 - `SESSION_SECRET`: mesmo segredo aleatório com pelo menos 32 caracteres, preservado entre deploys.
 - `S3_BUCKET`, `S3_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`.
-- `S3_ENDPOINT` e `S3_FORCE_PATH_STYLE=true` quando o provedor exigir. Na AWS, endpoint vazio.
-- Credenciais YouTube 1 e, quando usado, 2; credenciais TikTok. O web também recebe as variáveis de autenticação de usuários já existentes em `.env.example`.
+- `S3_ENDPOINT` e `S3_FORCE_PATH_STYLE=true` para R2/B2; na AWS, endpoint vazio e `S3_FORCE_PATH_STYLE=false`.
+- `AUTH_MODE=single`, `SINGLE_USER_ID` (userId original), `PANEL_PASSWORD` (mínimo de 12 caracteres) e `SINGLE_USER_EMAIL` (opcional, exibição).
+- Credenciais YouTube 1 e, quando usado, 2; credenciais TikTok. Supabase Auth só é necessário se `AUTH_MODE=supabase`.
 - `DATA_DIR=/tmp/tube-autopilot-cache`. Não copiar os caminhos locais de JSON para o ambiente Render. Os nomes lógicos dos documentos devem permanecer os padrões.
 
 `render.yaml` usa somente `sync: false` para segredos. Variáveis opcionais podem ficar vazias; o segundo cliente Google permanece opcional. Não incluir `.env`, `data/`, backups ou chaves no Git. O arquivo não cria banco ou bucket; ambos precisam existir antes de qualquer futura ativação. `sync: false` solicita valores na criação, mas não atualiza os existentes nas sincronizações seguintes.
@@ -95,12 +104,12 @@ Referências verificadas: [Blueprint](https://render.com/docs/blueprint-spec), [
 - `server/persistence.js`, `server/schema.sql`, `server/metadata.js`: documentos compartilhados, transações, versões e isolamento de contexto.
 - `server/media-store.js`: objetos privados e cache com verificação de integridade.
 - `server/migrate-shared.js`, `server/backup-shared.js`, `server/restore-shared.js`: importação sem sobrescrita e recuperação verificável.
-- `server/server.js`, `server/inventory.js`, `server/comments.js`, `server/oauth-store.js`, `server/tiktok.js`, `server/editor.js`, `server/categories.js`: integração com os recursos existentes.
+- `server/server.js`, `server/users.js`, `src/app.js`, `server/inventory.js`, `server/comments.js`, `server/oauth-store.js`, `server/tiktok.js`, `server/editor.js`, `server/categories.js`: integração com os recursos existentes e painel single-user.
 - `render.yaml`, `.env.example`, `package.json`, `package-lock.json`, `.gitignore`, `README.md`: execução e configuração.
-- `test/render.test.js`, cenário novo em `test/editor.test.js` e `openspec/changes/render-shared-worker/`: regressões e especificação.
+- `test/render.test.js`, `test/server-startup.test.js`, `test/render-blueprint.test.js`, cenário novo em `test/editor.test.js` e `openspec/changes/render-shared-worker/`: regressões e especificação.
 
 O diretório contém Git e alterações anteriores, embora as instruções fornecidas indiquem o contrário. Alterações preexistentes em `src/`, nos testes de categorias/isolamento e no editor foram preservadas; o diff total não representa somente esta tarefa. Não foram feitos commits, pushes ou mudanças de branch.
 
-Validação local final: **73 testes passaram, sem falhas ou testes ignorados**. Inclui inicialização real do servidor em ambiente isolado e comentário automático novo sem repetição no ciclo seguinte. A suíte também cobre a política gratuita, worker sem liderança sem acesso às filas, recusa de JSON em produção, recuperação de comentários, backup/restauração e perda do cache. `npm run validate:render` passou no schema público atual e na política gratuita; `openspec validate render-shared-worker --strict` passou. Integração com fornecedores reais continua fora dos testes offline. Resultados e configuração pendente estão em [validacao-final.md](validacao-final.md).
+Validação local final: **80 testes passaram, sem falhas ou testes ignorados**. Inclui inicialização real do servidor em ambiente isolado, login single-user com `userId` original e sem Supabase, recusa de configuração incompleta, schema `tube_autopilot` sem tabelas no `public`, consultas sempre qualificadas, comentário automático novo sem repetição no ciclo seguinte, política gratuita, worker sem liderança sem acesso às filas, recusa de JSON em produção, recuperação de comentários, backup/restauração e perda do cache. `npm run validate:render` passou no schema público atual e na política gratuita; `openspec validate render-shared-worker --strict` passou na validação anterior. Integração com fornecedores reais continua fora dos testes offline. Resultados e configuração pendente estão em [validacao-final.md](validacao-final.md).
 
 A suíte também revelou uma falha intermitente anterior na importação de arquivos iguais: a conclusão paralela das leituras podia preservar o segundo nome selecionado. A importação passou a processar na ordem de seleção, limitando também a memória usada simultaneamente. O teste de isolamento afetado passou isoladamente e na suíte completa após a correção.
