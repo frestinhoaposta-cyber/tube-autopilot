@@ -6,9 +6,14 @@ Nenhum deploy, contratação, criação de recurso externo, comentário real ou 
 
 | Verificação | Resultado |
 | --- | --- |
-| `npm test` | **73 testes; 73 passaram; 0 falhas; 0 ignorados** |
+| `npm test` | **84 testes; 84 passaram; 0 falhas; 0 ignorados** |
 | `node server/server.js` em processo real isolado | Site e `/api/health`: HTTP 200; contas sem sessão: HTTP 401 |
 | Web sem workers | Inicialização sem agendador, postagem de comentários ou edição automática |
+| Painel local no Windows | `HOST=127.0.0.1` por padrão; recusa conexão em interface externa |
+| Supervisor web | Bloqueia duplicata por porta loopback, libera a trava ao parar e reinicia o painel |
+| Supervisor worker | Reinicia o processo local após falha com espera progressiva |
+| Worker local | Processa agendamentos em JSON sem PostgreSQL ou S3 |
+| Scripts Windows | Duas tarefas no Agendador com fallback para registro do usuário; desinstalação não remove dados, chaves, backups ou logs |
 | Produção com persistência local | Inicialização recusada antes de criar dados |
 | Comentário automático novo | Gravado como `POSTED`, ID e data persistidos; ciclo seguinte não repete inserção |
 | Recuperação após reinício / falha de transporte | Reconciliação sem reenvio; resultado incerto segue para revisão |
@@ -20,7 +25,7 @@ Nenhum deploy, contratação, criação de recurso externo, comentário real ou 
 | `openspec validate render-shared-worker --strict` | Válido |
 | `git -c core.safecrlf=false diff --check` | Sem erros |
 
-Os testes usam HTTP local e PostgreSQL embarcado (PGlite). YouTube, TikTok e S3 são simulados: esses resultados confirmam o fluxo do código e as proteções, mas não certificam credenciais, permissões, quotas ou disponibilidade dos provedores reais. A inicialização HTTP usa dados temporários exclusivos do teste, sem ler o `.env` real. Em produção, o código exige PostgreSQL externo e não permite fallback para JSON local.
+Os testes usam HTTP local e PostgreSQL embarcado (PGlite). YouTube, TikTok e S3 são simulados: esses resultados confirmam o fluxo do código e as proteções, mas não certificam credenciais, permissões, quotas ou disponibilidade dos provedores reais. A inicialização HTTP usa dados temporários exclusivos do teste, sem ler o `.env` real. Em produção, o código exige PostgreSQL externo e não permite fallback para JSON local. Para execução doméstica, `server/local-worker.js` e os scripts em `scripts/windows` usam apenas `data/` e o painel em loopback, sem alterar backups nem exigir serviços pagos.
 
 ## O que falta configurar antes de ativar no Render
 
