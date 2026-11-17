@@ -48,6 +48,17 @@ test('node server/server.js inicia, serve o site e responde health sem iniciar w
     }
     assert.equal(health?.status, 200, output);
     assert.deepEqual(await health.json(), { ok: true, googleConfigured: false });
+    const external = Object.values(os.networkInterfaces()).flat().find(address => address.family === 'IPv4' && !address.internal);
+    if (external) {
+      const reachable = await new Promise(resolve => {
+        const socket = net.connect(port, external.address);
+        socket.setTimeout(500);
+        socket.once('connect', () => { socket.destroy(); resolve(true); });
+        socket.once('error', () => resolve(false));
+        socket.once('timeout', () => { socket.destroy(); resolve(false); });
+      });
+      assert.equal(reachable, false, 'O servidor local não deve escutar em interfaces externas.');
+    }
     const site = await fetch(base);
     assert.equal(site.status, 200);
     assert.match(await site.text(), /<!doctype html>/i);

@@ -16,9 +16,11 @@ Copie `.env.example` para `.env` e preencha as credenciais. Depois:
 npm run dev
 ```
 
-Para executar agendamentos, comentários e edição automática, configure a persistência PostgreSQL e mantenha outro terminal com `npm run worker`. O servidor web não executa essas tarefas. O modo JSON local é mantido para desenvolvimento HTTP e testes, e não admite o worker independente.
+Para executar agendamentos, comentários e edição automática, use `npm run worker:local` com persistência e vídeos em `data/`, ou configure PostgreSQL e mantenha outro terminal com `npm run worker`. O servidor web não executa essas tarefas.
 
 A adaptação para Render, a migração segura e os comandos de backup/restauração estão em [docs/render.md](docs/render.md). O Blueprint contém somente web gratuito; o worker fica separado no código para execução externa opcional. Comentários e tarefas locais só avançam enquanto esse processo estiver ligado. Nenhum recurso pago será criado e nenhum deploy é feito por estes arquivos.
+
+No Windows 10/11, `scripts\windows\instalar-inicio.cmd` registra o painel e o worker local como processos separados no logon, com reinício automático, proteção contra duplicidade e painel limitado a `http://127.0.0.1:3000`. Usa o Agendador de Tarefas quando disponível e faz fallback para entradas no registro do usuário quando o serviço `Schedule` está parado. Os comandos `iniciar.cmd`, `parar.cmd`, `diagnostico.cmd` e `desinstalar-inicio.cmd` estão na mesma pasta. Detalhes em [docs/windows-inicio-automatico.md](docs/windows-inicio-automatico.md).
 
 Abra exatamente:
 

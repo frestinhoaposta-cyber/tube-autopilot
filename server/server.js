@@ -22,6 +22,7 @@ const { isSupabaseConfigured, signUp, signIn } = users;
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
+const HOST = process.env.HOST || (persistence.shared() ? '0.0.0.0' : '127.0.0.1');
 const uploadDir = path.join(os.tmpdir(), 'tube-autopilot-uploads');
 fs.mkdirSync(uploadDir, { recursive: true });
 
@@ -429,9 +430,9 @@ app.use((err, req, res, next) => {
 
 app.get('*', (_, res) => res.sendFile(path.join(__dirname, '..', 'src', 'index.html')));
 
-const httpServer = app.listen(PORT, () => console.log(`Tube AutoPilot v2 rodando em http://localhost:${PORT}`));
+const httpServer = app.listen(PORT, HOST, () => console.log(`Tube AutoPilot v2 rodando em http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`));
 
-module.exports = { app, server: httpServer };
+module.exports = { app, server: httpServer, host: HOST };
 
 if (require.main === module) {
   let closing = false;
