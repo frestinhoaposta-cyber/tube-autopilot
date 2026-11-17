@@ -1,0 +1,18 @@
+{
+  "name": "Tube AutoPilot",
+  "short_name": "Tube AutoPilot",
+  "description": "Gerencie vídeos, canais e agendamentos.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0b1017",
+  "theme_color": "#0b1017",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
