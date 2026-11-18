@@ -24,6 +24,24 @@ const RANDOM_DESCRIPTION = `🎲 VÍDEOS ALEATÓRIOS TODOS OS DIAS!
 
 #shorts #shortsviral #short #viral #viralvideo #viralshorts #foryou #fyp #trending #trend #humor #comedia #memes #desafio #curiosidades #entretenimento #melhoresmomentos #top #inscrevase #seinscreva #shortvideo #shortsfeed #foryoupage #parati #brasil #explorar #recomendados #videosaleatorios #conteudoaleatorio #diversao`;
 
+const STEAL_EGG_DESCRIPTION = `SCRIPT STEAL A EGG LINK DIRETO — Script Steal a Egg Roblox, funções do script, demonstração e tutorial de uso
+SCRIPT STEAL A EGG LINK DIRETO — Script Steal a Egg Roblox, funções do script, demonstração e tutorial de uso
+SCRIPT STEAL A EGG LINK DIRETO — Script Steal a Egg Roblox, funções do script, demonstração e tutorial de uso
+
+🥚🔥 Nesse vídeo mostro o script de Steal a Egg no Roblox! Confira a demonstração, as funções apresentadas e o passo a passo mostrado no vídeo para entender como utilizar o script.
+
+👀 Assista até o final para conferir os detalhes e veja as informações de compatibilidade antes de testar!
+
+📲 SCRIPT DO VÍDEO AQUI:
+https://bloxxscripts.netlify.app/
+
+💬 Comenta qual script você quer ver no próximo vídeo!
+👍 Deixa o like e se inscreve para acompanhar mais conteúdos de scripts para Roblox!
+
+#stealaegg #stealaeggscript #scriptstealaegg #roblox #robloxscript #scriptsroblox #scriptroblox #linkdireto #robloxbrasil #robloxbr #robloxmobile #robloxpc #robloxgameplay #gameplayroblox #tutorialroblox #dicasroblox #gamersbr #gaming #fyp #fy #paravoce #foryou
+
+steal a egg script, script steal a egg, steal a egg roblox, roblox steal a egg, script de steal a egg, script para steal a egg, steal a egg script roblox, roblox script steal a egg, steal a egg scripts, scripts para roblox, scripts roblox, roblox scripts, script roblox, tutorial script steal a egg, como usar script steal a egg, funções script steal a egg, demonstração script steal a egg, steal a egg script tutorial, steal a egg script showcase, steal a egg gameplay, gameplay steal a egg, tutorial steal a egg, dicas steal a egg, steal a egg português, steal a egg brasil, script steal a egg link direto, steal a egg script link, script do vídeo steal a egg, roblox steal a egg gameplay, roblox script tutorial, roblox script showcase`;
+
 const MAX_SHORTS_PER_DAY = 10;
 const SHORTS_DAILY_SLOTS = ['08:00', '09:30', '10:45', '12:00', '13:30', '15:00', '16:30', '18:00', '19:30', '21:00'];
 const TITLE_HASHTAGS = ' #roblox #script';
@@ -73,7 +91,7 @@ const categoryDefaults = {
   },
   stealEgg: {
     id: 'stealEgg', name: 'Steal a Egg', emoji: '🥚', youtubeCategoryId: '20', youtubeCategoryName: 'Jogos',
-    description: '🥚 STEAL A EGG! Veja as melhores estratégias, scripts e novidades do jogo Roblox Steal a Egg para roubar todos os ovos.',
+    description: STEAL_EGG_DESCRIPTION,
     tags: ['steal a egg','roblox','script steal a egg','hack roblox','script 2026','mobile','pc','sem key','auto farm','egg','egg raro','spawn egg','link direto','steal a egg script'],
     emojis: ['🥚','🔥','⚡','🏆'], hooks: ['NOVO SCRIPT','MELHOR SCRIPT','NOVO HACK','SCRIPT FUNCIONANDO'], terms: ['STEAL A EGG','STEAL A EGG SCRIPT','STEAL A EGG ROBLOX'], benefits: ['SEM KEY','MOBILE E PC','AUTO FARM','AUTO COLLECT','TODOS OS OVOS','SPAWN EGG','LINK DIRETO','GRÁTIS','ATUALIZADO'], complements: ['2026','AGORA','ROBLOX 2026','GRÁTIS 2026'],
     longTitleTemplates: ['🥚 NOVO SCRIPT STEAL A EGG 2026','🔥 MELHOR HACK STEAL A EGG FUNCIONANDO','⚡ SCRIPT STEAL A EGG AUTO FARM 2026'], shortTitleTemplates: ['🥚 SCRIPT STEAL A EGG #shorts','🔥 NOVO HACK STEAL A EGG 2026 #shorts'],
