@@ -399,6 +399,23 @@ app.post('/api/youtube/upload', requireAuth, upload.single('video'), async (req,
       }
     });
 
+    try {
+      await inventoryRouter.store.trackExternalUpload({
+        userId: req.session.userId,
+        accountId: account.accountId,
+        channelId: account.channelId,
+        category: String(req.body.categoryId || 'brainrot'),
+        title,
+        description,
+        tags,
+        youtubeCategoryId,
+        youtubeVideoId: response.data.id,
+        publishAt
+      });
+    } catch (error) {
+      console.error('[comment] falha ao registrar vídeo enviado pelo painel:', error.message);
+    }
+
     res.json({
       ok: true,
       id: response.data.id,

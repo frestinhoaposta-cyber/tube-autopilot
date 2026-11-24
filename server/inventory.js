@@ -301,8 +301,10 @@ module.exports = function createInventoryRouter({ oauthClient, hasGoogleConfig }
           }
           item.accountId = account.accountId;
           const auth = await authenticate(account);
-          const existingId = await reconcile({ auth, item });
-          item.youtubeCommentId = existingId || await post({ auth, item: { ...item, commentText: item.commentAttemptText } });
+          // Estados incertos já foram reconciliados no início do loop. Aqui ainda
+          // não houve inserção: consultar a API primeiro pode bloquear o envio
+          // quando o YouTube ainda não liberou comentários no vídeo novo.
+          item.youtubeCommentId = await post({ auth, item: { ...item, commentText: item.commentAttemptText } });
           item.commentStatus = 'POSTED'; item.commentPostedAt = new Date().toISOString(); item.commentError = null;
           console.log(`[comment] success commentId=${item.youtubeCommentId}`);
         } catch (error) {
@@ -811,6 +813,39 @@ module.exports = function createInventoryRouter({ oauthClient, hasGoogleConfig }
   router.stopScheduler = () => { if (schedulerTimer) clearInterval(schedulerTimer); schedulerTimer = null; };
   router.setEditor = service => { editorService = service; };
   router.getEditor = () => editorService;
-  router.store = { readItems, saveItems, mutateItems, physicalPath, editedPath, publishPath, editedDir, videosDir, dbPath, clientItem, assertOwned, findVideoById, scopedByUser };
+  // Uploads diretos pelo painel não passam pelo estoque, mas precisam entrar no
+  // inventário para que o worker publique o comentário automático.
+  async function trackExternalUpload({ userId, accountId, channelId, category, title, description, tags, youtubeCategoryId, youtubeVideoId, publishAt }) {
+    if (!userId || !accountId || !youtubeVideoId) return null;
+    const now = new Date().toISOString();
+    const item = {
+      id: crypto.randomUUID(),
+      title: String(title || 'Vídeo enviado pelo painel').slice(0, 100),
+      category: String(category || 'brainrot'),
+      contentType: 'LONG',
+      userId: String(userId),
+      accountId: String(accountId),
+      channelId: channelId || null,
+      description: String(description || ''),
+      tags: Array.isArray(tags) ? tags.map(String) : [],
+      youtubeCategoryId: youtubeCategoryId || '20',
+      status: publishAt ? 'SCHEDULED' : 'PUBLISHED',
+      createdAt: now,
+      uploadedAt: now,
+      publishedAt: publishAt ? null : now,
+      scheduledAt: publishAt ? new Date(publishAt).toISOString() : null,
+      scheduledDate: null,
+      scheduledSlot: null,
+      youtubeVideoId: String(youtubeVideoId),
+      origin: 'DIRECT_UPLOAD',
+      filePath: null,
+      editedFilePath: null,
+      error: null
+    };
+    markPending(item);
+    await mutateItems(items => { items.push(item); return item; });
+    return clientItem(item);
+  }
+  router.store = { readItems, saveItems, mutateItems, physicalPath, editedPath, publishPath, editedDir, videosDir, dbPath, clientItem, assertOwned, findVideoById, scopedByUser, trackExternalUpload };
   return router;
 };

@@ -282,6 +282,108 @@ test('boot re-evaluation reavalia DISABLED em itens PUBLISHED no inventário', a
   process.env.INVENTORY_PATH = oldInventoryPath;
 });
 
+// ── processComments ──────────────────────────────────────────────────────────
+
+test('processComments publica item PENDING sem reconciliação prévia', async () => {
+  saveSettings({ enabled: true, text: 'Comente!', categories: {}, channels: {} });
+  const itemId = crypto.randomUUID();
+  fs.writeFileSync(inventoryPath, JSON.stringify([{
+    id: itemId, userId: accountUserId, accountId: account.accountId, channelId: 'CH_COMMENTS_TEST',
+    status: 'PUBLISHED', youtubeVideoId: 'publish-sem-reconciliacao', publishedAt: new Date().toISOString(),
+    commentStatus: 'PENDING', autoCommentEnabled: true, commentText: 'Comente!', commentAttemptCount: 0
+  }]));
+  let posts = 0;
+  await invRouter.processComments({
+    authenticate: async () => ({}),
+    reconcile: async () => { throw new Error('reconciliação não deveria ser chamada antes da inserção'); },
+    post: async () => { posts += 1; return 'comment-novo'; }
+  });
+  const atual = JSON.parse(fs.readFileSync(inventoryPath, 'utf8')).find(v => v.id === itemId);
+  assert.equal(posts, 1);
+  assert.equal(atual.commentStatus, 'POSTED');
+  assert.equal(atual.youtubeCommentId, 'comment-novo');
+  assert.equal(atual.commentError, null);
+});
+
+test('processComments reconcilia estado incerto sem inserir novo comentário', async () => {
+  saveSettings({ enabled: true, text: 'Comente!', categories: {}, channels: {} });
+  const itemId = crypto.randomUUID();
+  fs.writeFileSync(inventoryPath, JSON.stringify([{
+    id: itemId, userId: accountUserId, accountId: account.accountId, channelId: 'CH_COMMENTS_TEST',
+    status: 'PUBLISHED', youtubeVideoId: 'publish-incerto', publishedAt: new Date().toISOString(),
+    commentStatus: 'POSTING', commentAttemptText: 'Comente!', commentAttemptChannelId: 'CH_COMMENTS_TEST',
+    commentAttemptCount: 1, autoCommentEnabled: true, commentText: 'Comente!'
+  }]));
+  let posts = 0;
+  await invRouter.processComments({
+    authenticate: async () => ({}),
+    reconcile: async () => 'comment-existente',
+    post: async () => { posts += 1; return 'comment-duplicado'; }
+  });
+  const atual = JSON.parse(fs.readFileSync(inventoryPath, 'utf8')).find(v => v.id === itemId);
+  assert.equal(posts, 0);
+  assert.equal(atual.commentStatus, 'POSTED');
+  assert.equal(atual.youtubeCommentId, 'comment-existente');
+});
+
+test('upload direto publicado entra no inventário e recebe comentário automático', async () => {
+  saveSettings({ enabled: true, text: 'Comente direto!', categories: { brainrot: { enabled: true, text: 'Comente direto!' } }, channels: {} });
+  fs.writeFileSync(inventoryPath, '[]');
+  const tracked = await invRouter.store.trackExternalUpload({
+    userId: accountUserId, accountId: account.accountId, channelId: 'CH_COMMENTS_TEST',
+    category: 'brainrot', title: 'Vídeo direto', description: '', tags: [], youtubeCategoryId: '20',
+    youtubeVideoId: 'direto-publicado'
+  });
+  assert.equal(tracked.status, 'PUBLISHED');
+  assert.equal(tracked.commentStatus, 'PENDING');
+  assert.equal(tracked.commentText, 'Comente direto!');
+  assert.equal(tracked.origin, 'DIRECT_UPLOAD');
+
+  let posts = 0;
+  await invRouter.processComments({
+    authenticate: async () => ({}),
+    reconcile: async () => null,
+    post: async ({ item }) => { posts += 1; assert.equal(item.commentText, 'Comente direto!'); return 'comment-direto'; }
+  });
+  const atual = JSON.parse(fs.readFileSync(inventoryPath, 'utf8')).find(v => v.id === tracked.id);
+  assert.equal(posts, 1);
+  assert.equal(atual.commentStatus, 'POSTED');
+  assert.equal(atual.youtubeCommentId, 'comment-direto');
+});
+
+test('upload direto agendado só recebe comentário depois da publicação', async () => {
+  saveSettings({ enabled: true, text: 'Comente agendado!', categories: { brainrot: { enabled: true, text: 'Comente agendado!' } }, channels: {} });
+  fs.writeFileSync(inventoryPath, '[]');
+  const publishAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+  const tracked = await invRouter.store.trackExternalUpload({
+    userId: accountUserId, accountId: account.accountId, channelId: 'CH_COMMENTS_TEST',
+    category: 'brainrot', title: 'Vídeo agendado', description: '', tags: [], youtubeCategoryId: '20',
+    youtubeVideoId: 'direto-agendado', publishAt
+  });
+  assert.equal(tracked.status, 'SCHEDULED');
+  assert.equal(tracked.scheduledAt, publishAt);
+
+  let posts = 0;
+  const transport = {
+    authenticate: async () => ({}), reconcile: async () => null,
+    post: async () => { posts += 1; return 'comment-agendado'; }
+  };
+  await invRouter.processComments(transport);
+  assert.equal(posts, 0);
+
+  const itens = JSON.parse(fs.readFileSync(inventoryPath, 'utf8'));
+  const agendado = itens.find(v => v.id === tracked.id);
+  agendado.status = 'PUBLISHED';
+  agendado.publishedAt = new Date().toISOString();
+  markPending(agendado);
+  fs.writeFileSync(inventoryPath, JSON.stringify(itens));
+  await invRouter.processComments(transport);
+  assert.equal(posts, 1);
+  const atual = JSON.parse(fs.readFileSync(inventoryPath, 'utf8')).find(v => v.id === tracked.id);
+  assert.equal(atual.commentStatus, 'POSTED');
+  assert.equal(atual.youtubeCommentId, 'comment-agendado');
+});
+
 // ── saveSettings/readSettings ────────────────────────────────────────────────
 
 test('saveSettings e readSettings preservam configurações', () => {
